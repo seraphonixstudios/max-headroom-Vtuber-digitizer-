@@ -630,18 +630,16 @@ class MaxHeadroomTracker:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 2)
     
     def _draw_eye_effects(self, frame, landmarks, glitch_x, glitch_y):
-        """Draw advanced eye tracking visualization and red glow effect."""
+        """Draw advanced eye tracking visualization and anime-style lens flare glow."""
         if len(landmarks) < 48:
             return
         
         h, w = frame.shape[:2]
         t = time.time()
         
-        # Eye landmark indices (dlib 68-point model)
         left_eye_indices = list(range(36, 42))
         right_eye_indices = list(range(42, 48))
         
-        # Calculate eye centers
         def get_eye_center(indices):
             pts = [landmarks[i] for i in indices if i < len(landmarks)]
             if not pts:
@@ -650,11 +648,9 @@ class MaxHeadroomTracker:
             cy = sum(p[1] for p in pts) // len(pts)
             return (cx + glitch_x, cy + glitch_y)
         
-        # Calculate eye openness (vertical distance)
         def get_eye_openness(indices):
             if max(indices) >= len(landmarks):
                 return 0.0
-            # Top and bottom points of eye
             top_y = min(landmarks[i][1] for i in indices)
             bottom_y = max(landmarks[i][1] for i in indices)
             return float(bottom_y - top_y)
@@ -664,22 +660,13 @@ class MaxHeadroomTracker:
         left_open = get_eye_openness(left_eye_indices)
         right_open = get_eye_openness(right_eye_indices)
         
-        # Advanced eye tracking visualization
+        # Eye tracking HUD
         if left_center:
             lx, ly = left_center
-            # Draw eye openness indicator
             openness_pct = min(1.0, left_open / 20.0)
             bar_h = int(openness_pct * 30)
             cv2.rectangle(frame, (lx - 25, ly - 35), (lx - 15, ly - 35 + bar_h), (0, 255, 255), -1)
             cv2.rectangle(frame, (lx - 25, ly - 35), (lx - 15, ly - 5), (100, 100, 100), 1)
-            cv2.putText(frame, f"L:{openness_pct:.1f}", (lx - 35, ly - 40),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 255), 1)
-            
-            # Draw pupil position estimation
-            pupil_x = lx + int(3 * np.sin(t * 2))
-            pupil_y = ly + int(2 * np.cos(t * 1.5))
-            cv2.circle(frame, (pupil_x, pupil_y), 3, (255, 255, 0), -1)
-            cv2.circle(frame, (pupil_x, pupil_y), 6, (255, 255, 0), 1)
         
         if right_center:
             rx, ry = right_center
@@ -687,38 +674,81 @@ class MaxHeadroomTracker:
             bar_h = int(openness_pct * 30)
             cv2.rectangle(frame, (rx + 15, ry - 35), (rx + 25, ry - 35 + bar_h), (0, 255, 255), -1)
             cv2.rectangle(frame, (rx + 15, ry - 35), (rx + 25, ry - 5), (100, 100, 100), 1)
-            cv2.putText(frame, f"R:{openness_pct:.1f}", (rx + 15, ry - 40),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 255), 1)
-            
-            pupil_x = rx + int(3 * np.sin(t * 2 + 1))
-            pupil_y = ry + int(2 * np.cos(t * 1.5 + 1))
-            cv2.circle(frame, (pupil_x, pupil_y), 3, (255, 255, 0), -1)
-            cv2.circle(frame, (pupil_x, pupil_y), 6, (255, 255, 0), 1)
         
-        # Red glowing eye filter
+        # Anime lens flare eye glow
         if self.config.eye_glow:
-            pulse = 0.5 + 0.5 * np.sin(t * 8)  # Fast pulse 0..1
-            
-            for center, is_left in [(left_center, True), (right_center, False)]:
+            for center in [left_center, right_center]:
                 if center is None:
                     continue
-                cx, cy = center
-                
-                # Multiple layers for glow effect
-                for radius, alpha in [(25, 0.1), (18, 0.2), (12, 0.4), (8, 0.6)]:
-                    intensity = int(255 * alpha * (0.7 + 0.3 * pulse))
-                    color = (0, 0, intensity)  # BGR - pure red
-                    cv2.circle(frame, (cx, cy), radius, color, -1)
-                
-                # Bright core
-                core_intensity = int(200 + 55 * pulse)
-                cv2.circle(frame, (cx, cy), 4, (0, 0, core_intensity), -1)
-                cv2.circle(frame, (cx, cy), 6, (50, 50, 255), 2)
-                
-                # Eye label
-                label = "L" if is_left else "R"
-                cv2.putText(frame, label, (cx - 5, cy + 4),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 2)
+                self._draw_lens_flare_eye(frame, center, t)
+    
+    def _draw_lens_flare_eye(self, frame, center, t):
+        """Draw an anime-style lens flare / sharingan glowing eye effect."""
+        cx, cy = int(center[0]), int(center[1])
+        h, w = frame.shape[:2]
+        
+        # Create a transparent overlay for the glow
+        overlay = np.zeros_like(frame, dtype=np.float32)
+        
+        pulse = 0.6 + 0.4 * np.sin(t * 6)
+        flicker = 0.8 + 0.2 * np.sin(t * 15)
+        
+        # 1. Soft radial gradient glow (large fade)
+        max_radius = 80
+        for r in range(max_radius, 4, -4):
+            alpha = (1.0 - r / max_radius) * 0.25 * pulse
+            intensity = int(255 * alpha * flicker)
+            cv2.circle(overlay, (cx, cy), r, (0, 0, intensity), -1)
+        
+        # 2. Horizontal flare line (the classic anime eye beam)
+        flare_length = 120
+        flare_width = 3
+        for i in range(flare_length):
+            dist = abs(i - flare_length // 2)
+            alpha = (1.0 - dist / (flare_length // 2)) ** 2
+            intensity = int(255 * alpha * 0.8 * pulse * flicker)
+            x = cx - flare_length // 2 + i
+            if 0 <= x < w:
+                cv2.circle(overlay, (x, cy), flare_width, (0, int(intensity * 0.3), intensity), -1)
+        
+        # 3. Diagonal radial spikes / starburst rays
+        num_rays = 12
+        for i in range(num_rays):
+            angle = (2 * np.pi * i / num_rays) + t * 0.5
+            ray_length = 25 + 10 * np.sin(t * 3 + i)
+            end_x = int(cx + np.cos(angle) * ray_length)
+            end_y = int(cy + np.sin(angle) * ray_length)
+            
+            # Draw ray with gradient
+            steps = int(ray_length)
+            for s in range(steps):
+                px = int(cx + np.cos(angle) * s)
+                py = int(cy + np.sin(angle) * s)
+                alpha = (1.0 - s / ray_length) ** 1.5
+                intensity = int(255 * alpha * 0.7 * pulse)
+                if 0 <= px < w and 0 <= py < h:
+                    cv2.circle(overlay, (px, py), 2, (0, int(intensity * 0.2), intensity), -1)
+        
+        # 4. Inner bright glow ring
+        for r in [20, 14, 10]:
+            alpha = (20 - r) / 20 * 0.5 * pulse
+            intensity = int(255 * alpha * flicker)
+            cv2.circle(overlay, (cx, cy), r, (0, int(intensity * 0.3), intensity), -1)
+        
+        # 5. Bright core (yellow-white center)
+        core_size = 5
+        core_glow = int(255 * flicker)
+        cv2.circle(overlay, (cx, cy), core_size + 3, (0, core_glow // 3, core_glow), -1)
+        cv2.circle(overlay, (cx, cy), core_size, (core_glow // 4, core_glow, 255), -1)
+        cv2.circle(overlay, (cx, cy), 2, (core_glow // 2, 255, 255), -1)
+        
+        # Blend overlay onto frame using screen blend mode
+        frame_float = frame.astype(np.float32)
+        
+        # Screen blend: 1 - (1 - a) * (1 - b)
+        blended = 255 - (255 - frame_float) * (255 - overlay) / 255
+        np.clip(blended, 0, 255, out=blended)
+        frame[:] = blended.astype(np.uint8)
     
     def run(self):
         """Main tracking loop."""
