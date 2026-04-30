@@ -164,22 +164,35 @@ class OBSController:
             return None
     
     def start_auto_switch(self, tracker_data: Dict) -> None:
-        """Auto-switch based on tracking data."""
+        """Auto-switch based on tracking data and filter state."""
         if not self.config.get("auto_switch"):
             return
         
         blends = tracker_data.get("blendshapes", {})
+        filter_status = tracker_data.get("filter_status", {})
+        active_filters = filter_status.get("active", [])
         
-        if blends.get("jawOpen", 0) > 0.5:
-            self.set_filter("Face", "Glow", True)
-        else:
-            self.set_filter("Face", "Glow", False)
-        
-        if blends.get("mouthSmile_L", 0) > 0.5 or blends.get("mouthSmile_R", 0) > 0.5:
-            if self.current_scene != "Excited":
-                self.switch_scene("Excited")
-        elif self.current_scene != "Live":
+        # Android/Max Headroom mode scene switching
+        is_android = "Max Headroom" in active_filters
+        if is_android and self.current_scene != "Android":
+            self.switch_scene("Android")
+            self.set_filter("Face", "Digital", True)
+        elif not is_android and self.current_scene == "Android":
             self.switch_scene("Live")
+            self.set_filter("Face", "Digital", False)
+        
+        # Expression-based switching (only if not in android mode)
+        if not is_android:
+            if blends.get("jawOpen", 0) > 0.5:
+                self.set_filter("Face", "Glow", True)
+            else:
+                self.set_filter("Face", "Glow", False)
+            
+            if blends.get("mouthSmile_L", 0) > 0.5 or blends.get("mouthSmile_R", 0) > 0.5:
+                if self.current_scene != "Excited":
+                    self.switch_scene("Excited")
+            elif self.current_scene not in ["Live", "Android"]:
+                self.switch_scene("Live")
     
     def close(self) -> None:
         """Disconnect from OBS."""

@@ -351,6 +351,12 @@ python test_v31.py
 # Filter system tests (37 tests)
 python test_filters.py
 
+# End-to-end integration tests (25 tests)
+python test_e2e.py
+
+# Run all test suites at once
+python launch.py --all-tests
+
 # Quick validation
 python launch.py --quick-test
 ```
@@ -361,7 +367,8 @@ python launch.py --quick-test
 | v3.0 Core | 24 | ✅ Pass |
 | v3.1 Pipeline | 16 | ✅ Pass |
 | Filter System | 37 | ✅ Pass |
-| **Total** | **77** | **✅ 100%** |
+| End-to-End | 25 | ✅ Pass |
+| **Total** | **102** | **✅ 100%** |
 
 ---
 

@@ -204,6 +204,18 @@ class MaxHeadroomApp:
         self.root = None
         self.canvas = None
         self.info_label = None
+        
+        # Filter system
+        self.filter_manager = None
+        self._init_filters()
+    
+    def _init_filters(self):
+        """Initialize filter system for desktop app."""
+        try:
+            from filters import FilterManager
+            self.filter_manager = FilterManager()
+        except Exception as e:
+            print(f"[Init] Filter system not available: {e}")
     
     def init(self) -> bool:
         print("[Init] Loading face detector...")
@@ -357,6 +369,15 @@ class MaxHeadroomApp:
         cv2.putText(frame, ws_status, (10, h - 25),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, ws_color, 2)
         
+        # Filter status display
+        if self.filter_manager:
+            active = self.filter_manager.get_all_status()
+            enabled = [f["name"] for f in active if f["enabled"]]
+            if enabled:
+                filt_text = "FILTERS: " + ", ".join(enabled[:3])
+                cv2.putText(frame, filt_text, (10, h - 45),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+        
         # RGB split
         if self.config.glitch_intensity > 0.1:
             split = int(self.config.glitch_intensity * 15)
@@ -485,15 +506,31 @@ class MaxHeadroomApp:
             t = time.time()
             data = self.process_frame(frame, t)
             
+            # Apply filters
+            if self.filter_manager and frame is not None:
+                frame = self.filter_manager.process(
+                    frame,
+                    blendshapes=data.blendshapes,
+                    head_pose=data.head_pose,
+                    frame_id=self.frame_count
+                )
+            
             frame = self.draw_hologram(frame, data)
             
+            # Build payload with filter status
+            payload = {
+                "type": "face_data",
+                "blendshapes": data.blendshapes,
+                "head_pose": data.head_pose,
+                "timestamp": data.timestamp,
+            }
+            if self.filter_manager:
+                active = [f.name for f in self.filter_manager.filters if f.enabled]
+                if active:
+                    payload["filter_status"] = {"active": active}
+            
             if self.ws_connected:
-                self.send_websocket({
-                    "type": "face_data",
-                    "blendshapes": data.blendshapes,
-                    "head_pose": data.head_pose,
-                    "timestamp": data.timestamp,
-                })
+                self.send_websocket(payload)
             
             if self.canvas and frame is not None:
                 try:
@@ -536,15 +573,32 @@ class MaxHeadroomApp:
             
             t = time.time()
             data = self.process_frame(frame, t)
+            
+            # Apply filters
+            if self.filter_manager and frame is not None:
+                frame = self.filter_manager.process(
+                    frame,
+                    blendshapes=data.blendshapes,
+                    head_pose=data.head_pose,
+                    frame_id=self.frame_count
+                )
+            
             frame = self.draw_hologram(frame, data)
             
+            # Build payload with filter status
+            payload = {
+                "type": "face_data",
+                "blendshapes": data.blendshapes,
+                "head_pose": data.head_pose,
+                "timestamp": data.timestamp,
+            }
+            if self.filter_manager:
+                active = [f.name for f in self.filter_manager.filters if f.enabled]
+                if active:
+                    payload["filter_status"] = {"active": active}
+            
             if self.ws_connected:
-                self.send_websocket({
-                    "type": "face_data",
-                    "blendshapes": data.blendshapes,
-                    "head_pose": data.head_pose,
-                    "timestamp": data.timestamp,
-                })
+                self.send_websocket(payload)
             
             self.fps_counter += 1
             if time.time() - self.last_fps_time >= 1.0:
@@ -556,8 +610,20 @@ class MaxHeadroomApp:
             delay = int(1000 / self.config.target_fps)
             cv2.imshow(self.WINDOW_NAME, frame)
             
-            if cv2.waitKey(delay) & 0xFF == ord('q'):
+            key = cv2.waitKey(delay) & 0xFF
+            if key == ord('q'):
                 break
+            if self.filter_manager:
+                if key == ord('d') or key == ord('D'):
+                    self.filter_manager.toggle_filter("Max Headroom")
+                    print("[App] Max Headroom filter toggled")
+                if key == ord('b') or key == ord('B'):
+                    self.filter_manager.toggle_filter("Skin Smoothing")
+                if key == ord('c') or key == ord('C'):
+                    self.filter_manager.toggle_filter("Color Grading")
+                if key == ord('r') or key == ord('R'):
+                    self.filter_manager.reset()
+                    print("[App] All filters reset")
         
         self.running = False
         if self.cap:

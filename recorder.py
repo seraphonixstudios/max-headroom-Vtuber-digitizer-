@@ -32,6 +32,7 @@ class FrameRecord:
     head_pose: Dict[str, List[float]]
     landmarks: List[Dict[str, float]]
     fps: int
+    filter_status: Dict[str, Any] = field(default_factory=dict)
 
 class RecordingSession:
     """Recording session with playback."""
@@ -45,7 +46,7 @@ class RecordingSession:
         self.frame_count = 0
     
     def add_frame(self, data: Dict) -> None:
-        """Add frame to recording."""
+        """Add frame to recording including filter status."""
         record = FrameRecord(
             timestamp=data.get("timestamp", time.time()),
             frame_id=data.get("frame_id", self.frame_count),
@@ -53,6 +54,7 @@ class RecordingSession:
             head_pose=data.get("head_pose", {}),
             landmarks=data.get("landmarks", []),
             fps=data.get("fps", 0),
+            filter_status=data.get("filter_status", {}),
         )
         self.frames.append(record)
         self.frame_count += 1
@@ -80,6 +82,7 @@ class RecordingSession:
                     "hp": f.head_pose,
                     "lm": f.landmarks,
                     "fps": f.fps,
+                    "fs": f.filter_status,
                 }
                 for f in self.frames
             ]
@@ -108,6 +111,7 @@ class RecordingSession:
                 head_pose=frame_data["hp"],
                 landmarks=frame_data["lm"],
                 fps=frame_data["fps"],
+                filter_status=frame_data.get("fs", {}),
             )
             session.frames.append(record)
         
@@ -181,6 +185,7 @@ class Recorder:
             "timestamp": frame.timestamp,
             "fps": frame.fps,
             "frame_id": frame.frame_id,
+            "filter_status": frame.filter_status,
             "playback": True,
         }
     

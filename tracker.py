@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from collections import deque
 from enum import Enum
 
-VERSION = "3.0.0"
+VERSION = "3.1.1"
 
 # Logging setup
 try:
@@ -846,6 +846,21 @@ class MaxHeadroomTracker:
             if self.filter_manager:
                 self._draw_filter_hud(frame)
             
+            # Build filter status for E2E transparency
+            filter_status = {}
+            if self.filter_manager:
+                filter_status = {
+                    "active": [],
+                    "params": {},
+                }
+                for f in self.filter_manager.filters:
+                    if f.enabled:
+                        filter_status["active"].append(f.name)
+                        filter_status["params"][f.name] = {
+                            k: v for k, v in f.params.items()
+                            if isinstance(v, (int, float, str, bool, list))
+                        }
+
             data = {
                 "type": "face_data",
                 "version": VERSION,
@@ -856,6 +871,7 @@ class MaxHeadroomTracker:
                 "timestamp": time.time(),
                 "fps": self.fps,
                 "frame_id": self.frame_count,
+                "filter_status": filter_status,
             }
             
             if self.config.enable_ws:

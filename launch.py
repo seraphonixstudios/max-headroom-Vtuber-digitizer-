@@ -37,9 +37,9 @@ class MaxHeadroomLauncher:
             print(f"[Launcher] Server failed: {e}")
             return False
     
-    def start_tracker(self, test_mode=False, camera=0, glitch=0.15, ws_host="localhost", ws_port=30000):
+    def start_tracker(self, test_mode=False, camera=0, glitch=0.15, ws_host="localhost", ws_port=30000, android=False):
         """Start face tracker."""
-        print(f"[Launcher] Starting tracker (test={test_mode}, camera={camera})...")
+        print(f"[Launcher] Starting tracker (test={test_mode}, camera={camera}, android={android})...")
         try:
             args = [sys.executable, "tracker.py", "--ws-host", ws_host, "--ws-port", str(ws_port)]
             
@@ -50,6 +50,9 @@ class MaxHeadroomLauncher:
             
             if glitch > 0:
                 args.extend(["--glitch", str(glitch)])
+            
+            if android:
+                args.append("--android")
             
             self.tracker_process = subprocess.Popen(
                 args,
@@ -130,8 +133,10 @@ Examples:
     parser.add_argument("--port", type=int, default=30000, help="WebSocket port (default: 30000)")
     parser.add_argument("--host", default="localhost", help="Host (default: localhost)")
     parser.add_argument("--glitch", type=float, default=0.15, help="Glitch intensity (default: 0.15)")
+    parser.add_argument("--android", action="store_true", help="Enable Max Headroom android filter")
     parser.add_argument("--test-suite", action="store_true", help="Run test suite")
     parser.add_argument("--quick-test", action="store_true", help="Quick validation test")
+    parser.add_argument("--all-tests", action="store_true", help="Run all test suites")
     
     args = parser.parse_args()
     
@@ -150,6 +155,7 @@ Examples:
             from blender_export import BlenderExporter
             from vts_export import VTSExporter
             from gpu_accel import GPUDetector
+            from filters import FilterManager
             print("  [OK] All modules import successfully")
             
             c = Config()
@@ -162,6 +168,9 @@ Examples:
             bs, lm, p = t.process_frame(np.zeros((480,640,3),np.uint8))
             print(f"  [OK] Tracker produces {len(bs)} blendshapes")
             
+            mgr = FilterManager()
+            print(f"  [OK] Filter system with {len(mgr.filters)} filters")
+            
             print("\n[Quick Test] PASSED - System ready!")
             return 0
         
@@ -173,6 +182,31 @@ Examples:
     if args.test_suite:
         success = run_tests()
         return 0 if success else 1
+    
+    # All test suites
+    if args.all_tests:
+        print("\n[All Tests] Running complete test suite...")
+        suites = [
+            ("v3.0 Core", "run_tests.py"),
+            ("v3.1 Pipeline", "test_v31.py"),
+            ("Filter System", "test_filters.py"),
+            ("End-to-End", "test_e2e.py"),
+        ]
+        all_pass = True
+        for name, script in suites:
+            print(f"\n>>> {name} <<<")
+            result = subprocess.run([sys.executable, script], capture_output=False)
+            if result.returncode != 0:
+                all_pass = False
+                print(f"  {name} FAILED")
+            else:
+                print(f"  {name} PASSED")
+        print("\n" + "=" * 50)
+        if all_pass:
+            print("ALL TESTS PASSED")
+        else:
+            print("SOME TESTS FAILED")
+        return 0 if all_pass else 1
     
     # Interactive mode
     launcher = MaxHeadroomLauncher()
@@ -190,7 +224,8 @@ Examples:
             camera=args.camera,
             glitch=args.glitch,
             ws_host=args.host,
-            ws_port=args.port
+            ws_port=args.port,
+            android=args.android
         ):
             print("[Launcher] Failed to start tracker")
             return 1

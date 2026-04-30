@@ -42,6 +42,8 @@ class ClientData:
     head_pose: Dict[str, List[float]] = field(default_factory=dict)
     landmarks: List = field(default_factory=list)
     timestamp: float = 0.0
+    filter_status: Dict[str, Any] = field(default_factory=dict)
+    mode: str = "standard"
 
 class MaxHeadroomServer:
     """High-performance WebSocket server with OBS integration."""
@@ -130,7 +132,9 @@ class MaxHeadroomServer:
                 blendshapes=data.get("blendshapes", {}),
                 head_pose=data.get("head_pose", {}),
                 landmarks=data.get("landmarks", []),
-                timestamp=data.get("timestamp", time.time())
+                timestamp=data.get("timestamp", time.time()),
+                filter_status=data.get("filter_status", {}),
+                mode=data.get("mode", "standard")
             )
             
             self.frame_buffer.append(self.current_client.timestamp)
@@ -308,6 +312,8 @@ class MaxHeadroomServer:
                 "blendshapes": self.current_client.blendshapes,
                 "head_pose": self.current_client.head_pose,
                 "timestamp": self.current_client.timestamp,
+                "filter_status": self.current_client.filter_status,
+                "mode": self.current_client.mode,
             }
         return None
     
@@ -321,6 +327,12 @@ class MaxHeadroomServer:
             "obs_connected": self.obs_connected,
             "uptime": self.stats.uptime,
         }
+    
+    def get_filter_status(self) -> Dict[str, Any]:
+        """Get current filter status from most recent client data."""
+        if self.current_client:
+            return self.current_client.filter_status
+        return {}
 
 # Global server instance
 _server: MaxHeadroomServer = None

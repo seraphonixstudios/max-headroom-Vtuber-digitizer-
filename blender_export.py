@@ -111,8 +111,8 @@ class BlenderExporter:
         self.connected = False
         self.socket = None
     
-    def export(self, blendshapes: Dict[str, float], pose: Dict = None) -> bool:
-        """Export blendshapes to Blender."""
+    def export(self, blendshapes: Dict[str, float], pose: Dict = None, filter_status: Dict = None) -> bool:
+        """Export blendshapes to Blender with optional filter metadata."""
         if not self.connected:
             return False
         
@@ -127,6 +127,11 @@ class BlenderExporter:
             "frame": self.frame_count,
             "targets": exports,
         }
+        
+        if filter_status:
+            payload["filter_status"] = filter_status
+            active = filter_status.get("active", [])
+            payload["android_mode"] = "Max Headroom" in active
         
         try:
             msg = json.dumps(payload)

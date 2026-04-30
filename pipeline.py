@@ -142,11 +142,14 @@ class PipelineCoordinator:
             LOG.error("Tracker loop error: %s", e)
     
     def process_frame_data(self, data: Dict):
-        """Process frame data through the pipeline."""
+        """Process frame data through the pipeline with filter awareness."""
         start_time = time.time()
         
         with self._lock:
             self.stats.frames_processed += 1
+            
+            # Apply filter pipeline if tracker has filters
+            filter_status = data.get('filter_status', {})
             
             # Send to server
             if self.server:
@@ -157,14 +160,16 @@ class PipelineCoordinator:
                     LOG.warning("Server processing failed: %s", e)
                     self.stats.frames_dropped += 1
             
-            # Send to exporters
+            # Send to exporters with filter metadata
             blendshapes = data.get('blendshapes', {})
             pose = data.get('head_pose', {})
             
             for name, exporter in self.exporters.items():
                 try:
                     if hasattr(exporter, 'export'):
-                        exporter.export(blendshapes, pose)
+                        exporter.export(blendshapes, pose, filter_status=filter_status)
+                    elif hasattr(exporter, 'set_blendshapes'):
+                        exporter.set_blendshapes(blendshapes)
                 except Exception as e:
                     LOG.warning("Exporter %s failed: %s", name, e)
             
@@ -180,6 +185,11 @@ class PipelineCoordinator:
     def get_stats(self) -> Dict:
         """Get pipeline statistics."""
         with self._lock:
+            # Get filter status from server if available
+            filter_info = {}
+            if self.server and self.server.current_client:
+                filter_info = self.server.current_client.filter_status
+            
             return {
                 "version": VERSION,
                 "running": self.running,
@@ -191,6 +201,7 @@ class PipelineCoordinator:
                 "tracker_type": type(self.tracker).__name__ if self.tracker else None,
                 "server_running": self.server.running if self.server else False,
                 "exporters": list(self.exporters.keys()),
+                "filter_status": filter_info,
             }
     
     def stop(self):

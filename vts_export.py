@@ -129,8 +129,8 @@ class VTSExporter:
         
         return self._send_request(request)
     
-    def set_blendshapes(self, blendshapes: Dict[str, float]) -> bool:
-        """Set multiple blendshapes."""
+    def set_blendshapes(self, blendshapes: Dict[str, float], filter_status: Dict = None) -> bool:
+        """Set multiple blendshapes with optional filter metadata."""
         if not self.connected:
             return False
         
@@ -142,6 +142,14 @@ class VTSExporter:
                 "id": vts_name,
                 "value": max(0.0, min(1.0, value)),
             })
+        
+        # Add filter metadata as custom parameters if provided
+        if filter_status:
+            active = filter_status.get("active", [])
+            if "Max Headroom" in active:
+                params.append({"id": "AndroidMode", "value": 1.0})
+            else:
+                params.append({"id": "AndroidMode", "value": 0.0})
         
         request = {
             "apiName": "SetLive2DParameter",
