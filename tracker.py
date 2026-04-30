@@ -801,7 +801,7 @@ class MaxHeadroomTracker:
             LOG.warning("Continuing without WebSocket")
         
         self.running = True
-        LOG.info("Tracker v%s - Q:quit T:test E:eye B:beauty G:bg A:AR M:morph C:color R:reset", VERSION)
+        LOG.info("Tracker v%s - Q:quit T:test E:eye D:android B:beauty G:bg A:AR M:morph C:color R:reset", VERSION)
         
         frame_delay = int(1000 / self.config.target_fps)
         face_rect = None
@@ -886,6 +886,10 @@ class MaxHeadroomTracker:
             if key == ord('e') or key == ord('E'):
                 self.config.eye_glow = not self.config.eye_glow
                 LOG.info("Eye glow toggled: %s", self.config.eye_glow)
+            if key == ord('d') or key == ord('D'):
+                if self.filter_manager:
+                    self.filter_manager.toggle_filter("Max Headroom")
+                    LOG.info("Android/Max Headroom filter toggled")
             
             # Filter hotkeys
             if self.filter_manager:
@@ -938,6 +942,7 @@ def main():
     parser.add_argument("--digital", action="store_true", default=True, help="Digital entity mode (default: on)")
     parser.add_argument("--glitch", type=float, default=None, help="Glitch intensity (0.0-1.0)")
     parser.add_argument("--eye-glow", action="store_true", help="Enable red glowing eye filter")
+    parser.add_argument("--android", action="store_true", help="Enable Max Headroom android character filter")
     args = parser.parse_args()
     
     LOG.info("Max Headroom Digitizer v%s", VERSION)
@@ -957,6 +962,10 @@ def main():
     config.eye_glow = args.eye_glow
     
     tracker = MaxHeadroomTracker(config)
+    if args.android and tracker.filter_manager:
+        tracker.filter_manager.enable_filter("Max Headroom")
+        tracker.filter_manager.set_filter_param("Max Headroom", "intensity", 1.0)
+        LOG.info("Max Headroom android filter enabled")
     tracker.run()
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from .background import BackgroundFilter
 from .ar_overlay import AROverlayFilter
 from .face_morph import FaceMorphFilter
 from .color_grading import ColorGradingFilter
+from .max_headroom_filter import MaxHeadroomFilter
 
 try:
     from logging_utils import get_logger
@@ -40,6 +41,7 @@ class FilterManager:
     def _init_default_filters(self):
         """Initialize default filter set."""
         # Priority order: lower = earlier
+        self.filters.append(MaxHeadroomFilter())        # 2
         self.filters.append(ColorGradingFilter())       # 5
         self.filters.append(SkinSmoothingFilter())      # 10
         self.filters.append(FaceMorphFilter())          # 15

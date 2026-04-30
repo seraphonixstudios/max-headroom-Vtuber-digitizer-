@@ -9,9 +9,11 @@ from .background import BackgroundFilter
 from .ar_overlay import AROverlayFilter
 from .face_morph import FaceMorphFilter
 from .color_grading import ColorGradingFilter
+from .max_headroom_filter import MaxHeadroomFilter
 
 __all__ = [
     'Filter', 'FilterMode', 'FilterManager',
     'SkinSmoothingFilter', 'BackgroundFilter',
-    'AROverlayFilter', 'FaceMorphFilter', 'ColorGradingFilter'
+    'AROverlayFilter', 'FaceMorphFilter', 'ColorGradingFilter',
+    'MaxHeadroomFilter'
 ]

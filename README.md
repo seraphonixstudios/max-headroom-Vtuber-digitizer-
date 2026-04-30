@@ -16,7 +16,8 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 
 | Feature | Description |
 |---------|-------------|
-| **Filter System** | 5 Snapchat/WhatsApp-level real-time filters |
+| **Filter System** | 6 Snapchat/WhatsApp-level real-time filters |
+| **Max Headroom** | Android/digital character transformation filter |
 | **Skin Smoothing** | Bilateral beauty filter with edge preservation |
 | **Background** | Blur, color, or image replacement |
 | **AR Overlays** | Glasses, hats, crowns, mustache, tears, blush |
@@ -40,7 +41,8 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 | **VTS** | VTuber Studio API integration |
 | **GPU** | CUDA/OpenCL acceleration |
 | **CRT Effects** | Digital entity visual overlay |
-| **Filters** | Beauty, background, AR, morph, color (v3.1) |
+| **Android Mode** | Max Headroom styled character filter |
+| **Filters** | Beauty, background, AR, morph, color, android (v3.1) |
 
 ## Architecture
 
@@ -84,6 +86,7 @@ python tracker.py --test --eye-glow
 | `Q` | Quit |
 | `T` | Toggle test mode |
 | `E` | Toggle anime eye glow |
+| `D` | Toggle Max Headroom android filter |
 | `B` | Toggle beauty filter |
 | `G` | Toggle background filter |
 | `A` | Toggle AR overlays |
@@ -182,6 +185,40 @@ mgr.set_filter_param("Color Grading", "preset", "cyberpunk")
 mgr.set_filter_param("Color Grading", "vignette", 0.5)
 ```
 
+#### 6. Max Headroom Android Filter
+```bash
+# Hotkey: D
+# CLI: python tracker.py --android
+```
+Transforms you into a **Max Headroom styled android/digital character** with the classic 1980s cyberpunk broadcast intrusion aesthetic.
+
+**Effects:**
+- **Cyan Monochrome** — High-contrast grayscale with cyan/blue tint
+- **Heavy CRT Scanlines** — Thick, pronounced horizontal scan lines
+- **Temporal Stutter** — Occasional frame repeats for bad-signal look
+- **Chromatic Aberration** — RGB channel splitting for lens distortion
+- **Edge Enhancement** — Sharp unsharp mask for machine-like edges
+- **Pixelation** — Blocky digital artifacting
+- **Geometric Neon Grid** — Perspective cyan grid overlay
+- **Glitch Blocks** — Random rectangle corruption/inversion
+- **Data Overlay** — Scrolling status text, hex codes, signal bars
+- **Heavy Vignette** — Dark edges for broadcast intrusion feel
+
+**Intensity Control:**
+```python
+from filters import FilterManager
+
+mgr = FilterManager()
+mgr.enable_filter("Max Headroom")
+mgr.set_filter_param("Max Headroom", "intensity", 1.0)  # Full effect
+mgr.set_filter_param("Max Headroom", "intensity", 0.5)  # Subtle
+
+# Toggle individual effects
+mgr.set_filter_param("Max Headroom", "scanlines", True)
+mgr.set_filter_param("Max Headroom", "glitch_blocks", False)
+mgr.set_filter_param("Max Headroom", "data_overlay", True)
+```
+
 ---
 
 ## Configuration (v3.1)
@@ -239,6 +276,7 @@ set('tracker.eye_glow', True)
 | AR Overlay | `filters/ar_overlay.py` | Stickers & effects |
 | Face Morph | `filters/face_morph.py` | Mesh deformation |
 | Color Grading | `filters/color_grading.py` | LUT color filters |
+| Max Headroom | `filters/max_headroom_filter.py` | Android character transformation |
 
 ### Export Modules
 
@@ -268,6 +306,7 @@ python tracker.py --help
 --glitch 0.15           # Glitch intensity
 --eye-glow              # Enable eye glow
 --digital               # Digital entity mode
+--android               # Enable Max Headroom android filter
 ```
 
 ---
@@ -309,7 +348,7 @@ python run_tests.py
 # v3.1 pipeline tests (16 tests)
 python test_v31.py
 
-# Filter system tests (22 tests)
+# Filter system tests (37 tests)
 python test_filters.py
 
 # Quick validation
@@ -321,8 +360,8 @@ python launch.py --quick-test
 |-------|-------|--------|
 | v3.0 Core | 24 | ✅ Pass |
 | v3.1 Pipeline | 16 | ✅ Pass |
-| Filter System | 22 | ✅ Pass |
-| **Total** | **62** | **✅ 100%** |
+| Filter System | 37 | ✅ Pass |
+| **Total** | **77** | **✅ 100%** |
 
 ---
 
@@ -371,7 +410,7 @@ python tracker.py --width 640 --height 480 --fps 30
 
 ### Filters Not Working
 - Ensure landmarks are detected (face visible to camera)
-- Press filter hotkeys (B, G, A, M, C) to toggle
+- Press filter hotkeys (D, B, G, A, M, C) to toggle
 - Check `logs/max_headroom.log` for errors
 
 ---
@@ -423,7 +462,8 @@ filter/
 │   ├── background.py
 │   ├── ar_overlay.py
 │   ├── face_morph.py
-│   └── color_grading.py
+│   ├── color_grading.py
+│   └── max_headroom_filter.py  # Android character filter
 └── README.md             # This file
 ```
 

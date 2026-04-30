@@ -33,7 +33,8 @@ def run_tests():
     print("=" * 60)
     
     from filters import (FilterManager, SkinSmoothingFilter, BackgroundFilter,
-                        AROverlayFilter, FaceMorphFilter, ColorGradingFilter)
+                        AROverlayFilter, FaceMorphFilter, ColorGradingFilter,
+                        MaxHeadroomFilter)
     
     # Filter Manager
     print("\n>>> FILTER MANAGER <<<")
@@ -42,13 +43,13 @@ def run_tests():
     
     def test_manager_filters():
         mgr = FilterManager()
-        return len(mgr.filters) >= 5
-    test("Manager has 5+ filters", test_manager_filters)
+        return len(mgr.filters) >= 6
+    test("Manager has 6+ filters", test_manager_filters)
     
     def test_manager_status():
         mgr = FilterManager()
         status = mgr.get_all_status()
-        return len(status) >= 5 and all("name" in s for s in status)
+        return len(status) >= 6 and all("name" in s for s in status)
     test("Manager status", test_manager_status)
     
     def test_manager_process():
@@ -194,6 +195,162 @@ def run_tests():
         result = filt.process(frame)
         return result.shape == frame.shape
     test("Vignette effect", test_vignette)
+    
+    # Max Headroom Android Filter
+    print("\n>>> MAX HEADROOM ANDROID FILTER <<<")
+    
+    test("MH filter init", lambda: MaxHeadroomFilter() is not None)
+    
+    def test_mh_process():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        frame = np.random.randint(0, 255, (480, 640, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape and result.dtype == np.uint8
+    test("MH filter process", test_mh_process)
+    
+    def test_mh_monochrome():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("monochrome", True)
+        frame = np.full((100, 100, 3), [128, 64, 200], dtype=np.uint8)
+        result = filt.process(frame)
+        # Should be mostly cyan/blue tinted
+        return result.shape == frame.shape and np.mean(result[:, :, 0]) > np.mean(result[:, :, 2])
+    test("MH monochrome cyan", test_mh_monochrome)
+    
+    def test_mh_scanlines():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("scanlines", True)
+        frame = np.full((100, 100, 3), 128, dtype=np.uint8)
+        result = filt.process(frame)
+        # Scanlines should create dark horizontal bands
+        row_means = [np.mean(result[y, :, :]) for y in range(0, 100, 4)]
+        return max(row_means) > min(row_means) + 5
+    test("MH scanlines effect", test_mh_scanlines)
+    
+    def test_mh_pixelation():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("pixelate", True)
+        filt.set_param("pixelate_scale", 0.1)
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        # Pixelation should reduce variance
+        return result.shape == frame.shape and np.var(result) < np.var(frame) * 1.5
+    test("MH pixelation", test_mh_pixelation)
+    
+    def test_mh_sharpen():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("sharpen", True)
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape
+    test("MH edge sharpen", test_mh_sharpen)
+    
+    def test_mh_vignette():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("vignette", True)
+        frame = np.full((100, 100, 3), 200, dtype=np.uint8)
+        result = filt.process(frame)
+        # Center should be brighter than corners
+        center = np.mean(result[40:60, 40:60])
+        corner = np.mean(result[0:10, 0:10])
+        return center > corner
+    test("MH vignette", test_mh_vignette)
+    
+    def test_mh_grid():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("grid", True)
+        frame = np.zeros((100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        # Grid should add cyan lines
+        return np.mean(result) > 0
+    test("MH geometric grid", test_mh_grid)
+    
+    def test_mh_data_overlay():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("data_overlay", True)
+        frame = np.zeros((100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        # Data overlay should add text (non-zero in top/bottom bars)
+        return np.mean(result[0:20, :]) > 0 or np.mean(result[80:100, :]) > 0
+    test("MH data overlay", test_mh_data_overlay)
+    
+    def test_mh_intensity_cycle():
+        filt = MaxHeadroomFilter()
+        levels = [0.0, 0.3, 0.6, 1.0]
+        for _ in range(6):
+            level = filt.cycle_intensity()
+            if level not in levels:
+                return False
+        return True
+    test("MH intensity cycle", test_mh_intensity_cycle)
+    
+    def test_mh_chromatic():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("chromatic", True)
+        filt.set_param("chromatic_probability", 1.0)  # Force it
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape
+    test("MH chromatic aberration", test_mh_chromatic)
+    
+    def test_mh_stutter():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("stutter", True)
+        filt.set_param("stutter_probability", 1.0)  # Force stutter
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result1 = filt.process(frame)
+        result2 = filt.process(frame + 50)
+        # Second frame should be stuttered (repeat of result1)
+        return np.array_equal(result2, result1)
+    test("MH temporal stutter", test_mh_stutter)
+    
+    def test_mh_glitch_blocks():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("glitch_blocks", True)
+        filt.set_param("glitch_block_probability", 1.0)  # Force glitch
+        frame = np.full((100, 100, 3), 128, dtype=np.uint8)
+        result = filt.process(frame)
+        # Should differ from uniform frame
+        return not np.all(result == 128)
+    test("MH glitch blocks", test_mh_glitch_blocks)
+    
+    def test_mh_manager_integration():
+        mgr = FilterManager()
+        filt = mgr.get_filter("Max Headroom")
+        if not filt:
+            return False
+        mgr.enable_filter("Max Headroom")
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = mgr.process(frame)
+        return result.shape == frame.shape
+    test("MH manager integration", test_mh_manager_integration)
+    
+    def test_mh_performance():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        frame = np.random.randint(0, 255, (480, 640, 3), np.uint8)
+        
+        import time
+        start = time.time()
+        for _ in range(10):
+            result = filt.process(frame)
+        elapsed = time.time() - start
+        
+        print(f" ({elapsed*1000/10:.1f}ms/frame)", end="")
+        return elapsed < 2.0  # Under 200ms per frame
+    test("MH filter performance", test_mh_performance)
     
     # Performance
     print("\n>>> PERFORMANCE <<<")
