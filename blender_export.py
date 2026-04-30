@@ -13,6 +13,15 @@ from dataclasses import dataclass
 
 VERSION = "3.0.0"
 
+# Logging setup
+try:
+    from logging_utils import LOG, get_logger
+    LOG = get_logger("Blender")
+except Exception:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    LOG = logging.getLogger("MaxHeadroom.Blender")
+
 ARKIT_TO_BLENDER = {
     "jawOpen": "jaw_master",
     "jawLeft": "jaw_left",

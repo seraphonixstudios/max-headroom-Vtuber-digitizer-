@@ -11,6 +11,15 @@ import time
 
 VERSION = "3.0.0"
 
+# Logging setup
+try:
+    from logging_utils import LOG, get_logger
+    LOG = get_logger("GPU")
+except Exception:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    LOG = logging.getLogger("MaxHeadroom.GPU")
+
 class GPUDetector:
     """GPU-accelerated face detection."""
     
@@ -32,7 +41,7 @@ class GPUDetector:
             cuda_devices = cv2.cuda.getCudaEnabledDevice()
             if cuda_devices > 0:
                 self.use_cuda = True
-                print(f"[GPU] CUDA available: {cuda_devices} device(s)")
+                LOG.info("CUDA available: %d device(s)", cuda_devices)
                 return True
         except:
             pass
@@ -42,12 +51,12 @@ class GPUDetector:
             if ocl:
                 cv2.ocl.setUseOpenCL(True)
                 self.use_cuda = True
-                print("[GPU] OpenCL available")
+                LOG.info("OpenCL available")
                 return True
         except:
             pass
         
-        print("[GPU] Using CPU fallback")
+        LOG.info("Using CPU fallback")
         return False
     
     def _load_cascade(self) -> None:

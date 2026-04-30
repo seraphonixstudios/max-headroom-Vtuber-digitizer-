@@ -12,6 +12,15 @@ from typing import Dict, List, Tuple, Optional
 
 VERSION = "3.0.0"
 
+# Logging setup
+try:
+    from logging_utils import LOG, get_logger
+    LOG = get_logger("MediaPipe")
+except Exception:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    LOG = logging.getLogger("MaxHeadroom.MediaPipe")
+
 @dataclass
 class MediaPipeConfig:
     """MediaPipe detector configuration."""
@@ -64,11 +73,11 @@ class MediaPipeFaceTracker:
             )
             
             self.face_mesh = vision.FaceLandmarker.create_from_options(options)
-            print("[MediaPipe] Face Landmarker initialized")
+            LOG.info("Face Landmarker initialized")
             
         except Exception as e:
-            print(f"[MediaPipe] Init error: {e}")
-            print("[MediaPipe] Using fallback tracker")
+            LOG.error("Init error: %s", e)
+            LOG.info("Using fallback tracker")
             self.face_mesh = None
     
     def _get_model_path(self) -> str:
@@ -86,11 +95,11 @@ class MediaPipeFaceTracker:
         if not os.path.exists(model_path):
             try:
                 import urllib.request
-                print(f"[MediaPipe] Downloading model...")
+                LOG.info("Downloading model...")
                 urllib.request.urlretrieve(model_url, model_path)
-                print(f"[MediaPipe] Model saved to {model_path}")
+                LOG.info("Model saved to %s", model_path)
             except Exception as e:
-                print(f"[MediaPipe] Download failed: {e}")
+                LOG.error("Download failed: %s", e)
                 return None
         
         return model_path

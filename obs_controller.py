@@ -10,6 +10,15 @@ from typing import Dict, List, Optional, Any
 
 VERSION = "3.0.0"
 
+# Logging setup
+try:
+    from logging_utils import LOG, get_logger
+    LOG = get_logger("OBS")
+except Exception:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    LOG = logging.getLogger("MaxHeadroom.OBS")
+
 class OBSController:
     """OBS WebSocket control for Max Headroom."""
     
@@ -49,12 +58,12 @@ class OBSController:
             
             if resp.get("status") == "ok":
                 self.connected = True
-                print(f"[OBS] Connected to {self.host}:{self.port}")
+                LOG.info("Connected to %s:%d", self.host, self.port)
                 self._get_scenes()
                 return True
             
         except Exception as e:
-            print(f"[OBS] Connection failed: {e}")
+            LOG.error("Connection failed: %s", e)
         
         self.connected = False
         return False

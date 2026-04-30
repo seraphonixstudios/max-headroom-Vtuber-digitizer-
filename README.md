@@ -293,21 +293,45 @@ pip install -r requirements.txt
 
 ---
 
+## Logging
+
+All modules use centralized logging with console and file output.
+
+### Log Location
+- Console: Real-time colored output
+- File: `logs/max_headroom.log` (rotating, 5MB max)
+
+### Log Levels
+- **INFO**: Startup, connections, status
+- **WARNING**: Recoverable issues (camera unavailable, WS disconnect)
+- **ERROR**: Failures that need attention
+- **DEBUG**: Detailed frame processing (enable with `LOG.setLevel(logging.DEBUG)`)
+
+### Enable Debug Logging
+```python
+from logging_utils import LOG
+import logging
+LOG.setLevel(logging.DEBUG)
+```
+
 ## File Structure
 
 ```
 filter/
 ├── tracker.py          # Main tracker
 ├── server.py          # WebSocket server
+├── logging_utils.py   # Centralized logging
 ├── mediapipe_tracker.py  # MediaPipe module
 ├── obs_controller.py # OBS integration
 ├── recorder.py       # Recording
 ├── blender_export.py  # Blender export
 ├── vts_export.py    # VTS export
 ├── gpu_accel.py     # GPU acceleration
+├── launch.py        # Unified launcher
+├── run_tests.py     # Test suite
+├── test_e2e.py      # End-to-end test
 ├── max_headroom.py   # Desktop GUI
-├── test_run.py      # Test script
-└── README.md      # This file
+└── README.md        # This file
 ```
 
 ---

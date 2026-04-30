@@ -12,6 +12,15 @@ from dataclasses import dataclass
 
 VERSION = "3.0.0"
 
+# Logging setup
+try:
+    from logging_utils import LOG, get_logger
+    LOG = get_logger("VTS")
+except Exception:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    LOG = logging.getLogger("MaxHeadroom.VTS")
+
 ARKIT_TO_VTS = {
     "eyeBlink_L": "EyeL",
     "eyeBlink_R": "EyeR",

@@ -14,6 +14,15 @@ from collections import deque
 
 VERSION = "3.0.0"
 
+# Logging setup
+try:
+    from logging_utils import LOG, get_logger
+    LOG = get_logger("Recorder")
+except Exception:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    LOG = logging.getLogger("MaxHeadroom.Recorder")
+
 @dataclass
 class FrameRecord:
     """Single frame of tracking data."""
@@ -119,14 +128,14 @@ class Recorder:
         """Start recording."""
         self.current = RecordingSession(name)
         self.is_recording = True
-        print(f"[Record] Started: {self.current.name}")
+        LOG.info("Started recording: %s", self.current.name)
     
     def stop(self) -> Optional[RecordingSession]:
         """Stop recording."""
         self.is_recording = False
         
         if self.current:
-            print(f"[Record] Stopped: {self.current.frame_count} frames")
+            LOG.info("Stopped recording: %d frames", self.current.frame_count)
         
         return self.current
     

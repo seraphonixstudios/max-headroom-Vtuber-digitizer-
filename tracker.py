@@ -14,7 +14,16 @@ from dataclasses import dataclass
 from collections import deque
 from enum import Enum
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
+
+# Logging setup
+try:
+    from logging_utils import LOG, get_logger
+    LOG = get_logger("Tracker")
+except Exception:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    LOG = logging.getLogger("MaxHeadroom.Tracker")
 
 try:
     import websocket
@@ -22,7 +31,7 @@ except ImportError:
     try:
         import ws as websocket
     except ImportError:
-        print("ERROR: pip install websocket-client")
+        LOG.error("websocket-client not installed. Run: pip install websocket-client")
         sys.exit(1)
 
 class Config:
@@ -385,17 +394,17 @@ class MaxHeadroomTracker:
         
     def init(self) -> bool:
         """Initialize camera and detector."""
-        print("[Init] Loading face detector...")
+        LOG.info("Loading face detector...")
         if self.detector.cascade.empty():
-            print("[Init] ERROR: Failed to load Haar cascade")
+            LOG.error("Failed to load Haar cascade")
             return False
-        print("[Init] Face detector ready")
+        LOG.info("Face detector ready")
         
-        print(f"[Init] Opening camera {self.config.camera_index}...")
+        LOG.info("Opening camera %d...", self.config.camera_index)
         self.cap = cv2.VideoCapture(self.config.camera_index)
         
         if not self.cap.isOpened():
-            print("[Init] Camera not available - TEST MODE")
+            LOG.warning("Camera not available - switching to TEST MODE")
             self.config.test_mode = True
             return True
         
@@ -406,25 +415,26 @@ class MaxHeadroomTracker:
         
         actual_w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         actual_h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        print(f"[Init] Camera: {int(actual_w)}x{int(actual_h)}")
+        LOG.info("Camera ready: %dx%d", int(actual_w), int(actual_h))
         
         return True
     
     def connect_ws(self) -> bool:
         """Connect to WebSocket server."""
         if not self.config.enable_ws:
+            LOG.info("WebSocket disabled")
             return True
         
-        print(f"[WS] Connecting to {self.config.ws_host}:{self.config.ws_port}...")
+        LOG.info("Connecting to WebSocket %s:%d...", self.config.ws_host, self.config.ws_port)
         try:
             self.ws = websocket.create_connection(
                 f"ws://{self.config.ws_host}:{self.config.ws_port}",
                 timeout=5
             )
-            print("[WS] Connected!")
+            LOG.info("WebSocket connected!")
             return True
         except Exception as e:
-            print(f"[WS] Connection failed: {e}")
+            LOG.warning("WebSocket connection failed: %s. Continuing without WS.", e)
             self.config.enable_ws = False
             return False
     
@@ -612,13 +622,14 @@ class MaxHeadroomTracker:
     def run(self):
         """Main tracking loop."""
         if not self.init():
+            LOG.error("Initialization failed")
             return
         
         if not self.connect_ws():
-            print("[WARNING] Continuing without WebSocket")
+            LOG.warning("Continuing without WebSocket")
         
         self.running = True
-        print("[Main] Running - Press 'Q' to quit, 'T' toggle test mode")
+        LOG.info("Tracker running - Press Q to quit, T to toggle test mode")
         
         frame_delay = int(1000 / self.config.target_fps)
         face_rect = None
@@ -633,12 +644,14 @@ class MaxHeadroomTracker:
             else:
                 ret, frame = self.cap.read()
                 if not ret:
+                    LOG.warning("Camera read failed")
                     break
                 
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 face_rect = self.detector.detect(gray)
                 
                 if face_rect is None:
+                    h, w = frame.shape[:2]
                     cv2.putText(frame, "NO FACE DETECTED", (w//2 - 100, h//2),
                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
             
@@ -669,7 +682,8 @@ class MaxHeadroomTracker:
                 
                 if self.frame_count % 30 == 0 and self.frame_count > 0:
                     ws_status = "ON" if self.ws else "OFF"
-                    print(f"[Main] Frame {self.frame_count} | FPS: {self.fps} | WS: {ws_status} | jawOpen: {blendshapes.get('jawOpen', 0):.2f}")
+                    LOG.info("Frame %d | FPS: %d | WS: %s | jawOpen: %.2f",
+                            self.frame_count, self.fps, ws_status, blendshapes.get('jawOpen', 0))
             
             self.frame_count += 1
             
@@ -677,10 +691,11 @@ class MaxHeadroomTracker:
             key = cv2.waitKey(frame_delay) & 0xFF
             
             if key == ord('q') or key == ord('Q'):
+                LOG.info("Quit key pressed")
                 break
             if key == ord('t') or key == ord('T'):
                 self.config.test_mode = not self.config.test_mode
-                print(f"[Main] Test mode: {self.config.test_mode}")
+                LOG.info("Test mode toggled: %s", self.config.test_mode)
         
         self.stop()
     
@@ -690,12 +705,14 @@ class MaxHeadroomTracker:
         
         if self.cap:
             self.cap.release()
+            LOG.info("Camera released")
         
         if self.ws:
             self.ws.close()
+            LOG.info("WebSocket closed")
         
         cv2.destroyAllWindows()
-        print(f"[Main] Stopped - processed {self.frame_count} frames, sent {self.sent_count}")
+        LOG.info("Stopped - processed %d frames, sent %d", self.frame_count, self.sent_count)
 
 def main():
     parser = argparse.ArgumentParser(description="Max Headroom Digitizer Tracker v" + VERSION)
@@ -711,8 +728,8 @@ def main():
     parser.add_argument("--glitch", type=float, default=None, help="Glitch intensity (0.0-1.0)")
     args = parser.parse_args()
     
-    print(f"Max Headroom Digitizer v{VERSION}")
-    print("=" * 50)
+    LOG.info("Max Headroom Digitizer v%s", VERSION)
+    LOG.info("=" * 50)
     
     config = Config()
     config.camera_index = args.camera
