@@ -1,0 +1,95 @@
+{
+  "version": "3.1.0",
+  "tracker": {
+    "camera_index": 0,
+    "target_fps": 60,
+    "resolution": [640, 480],
+    "smoothing": 0.75,
+    "kalman_filter": true,
+    "outlier_rejection": true,
+    "detector": {
+      "primary": "mediapipe",
+      "fallback": "haar",
+      "face_confidence": 0.5,
+      "tracking_confidence": 0.5
+    },
+    "blendshapes": {
+      "calculate_3d": true,
+      "eye_gaze_enabled": true,
+      "mouth_asymmetry": true,
+      "brow_asymmetry": true
+    },
+    "head_pose": {
+      "enabled": true,
+      "use_solve_pnp": true,
+      "model_points": "generic",
+      "smooth_rotation": 0.8,
+      "smooth_translation": 0.8
+    },
+    "digital_mode": true,
+    "glitch_intensity": 0.15,
+    "eye_glow": false,
+    "auto_reconnect": true,
+    "reconnect_interval": 5.0
+  },
+  "server": {
+    "host": "localhost",
+    "port": 30000,
+    "max_clients": 10,
+    "auth_token": null,
+    "rate_limit": {
+      "enabled": true,
+      "max_messages_per_second": 60,
+      "burst_size": 120
+    },
+    "obs": {
+      "enabled": true,
+      "host": "localhost",
+      "port": 4455,
+      "auto_switch_scenes": true
+    }
+  },
+  "websocket": {
+    "host": "localhost",
+    "port": 30000,
+    "compression": true,
+    "batch_frames": false,
+    "batch_interval_ms": 16
+  },
+  "exports": {
+    "blender": {
+      "enabled": false,
+      "host": "localhost",
+      "port": 30001,
+      "tcp_mode": true,
+      "auto_connect": true
+    },
+    "vts": {
+      "enabled": false,
+      "port": 9001
+    },
+    "obs": {
+      "enabled": false,
+      "auto_switch": true
+    }
+  },
+  "recording": {
+    "auto_record": false,
+    "output_dir": "recordings",
+    "format": "json",
+    "compress": true
+  },
+  "performance": {
+    "gpu_enabled": true,
+    "frame_skip": 0,
+    "threaded_processing": true,
+    "max_processing_ms": 33
+  },
+  "logging": {
+    "level": "INFO",
+    "console": true,
+    "file": true,
+    "max_file_size_mb": 5,
+    "backup_count": 5
+  }
+}
