@@ -393,6 +393,20 @@ class MaxHeadroomTracker:
         self.current_landmarks = []
         self.current_pose = {}
         
+        # Filter system
+        self.filter_manager = None
+        self._init_filters()
+        
+    def _init_filters(self):
+        """Initialize Snapchat/WhatsApp level filter system."""
+        try:
+            from filters import FilterManager
+            self.filter_manager = FilterManager()
+            LOG.info("Filter system initialized with %d filters", 
+                    len(self.filter_manager.filters))
+        except Exception as e:
+            LOG.warning("Filter system not available: %s", e)
+    
     def init(self) -> bool:
         """Initialize camera and detector."""
         LOG.info("Loading face detector...")
@@ -682,6 +696,33 @@ class MaxHeadroomTracker:
                     continue
                 self._draw_lens_flare_eye(frame, center, t)
     
+    def _draw_filter_hud(self, frame):
+        """Draw filter status HUD overlay."""
+        if not self.filter_manager:
+            return
+        
+        h, w = frame.shape[:2]
+        status = self.filter_manager.get_all_status()
+        
+        y_offset = h - 80
+        x_offset = w - 160
+        
+        # Semi-transparent background
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (x_offset - 10, y_offset - 20), (w - 5, h - 5), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+        
+        cv2.putText(frame, "FILTERS", (x_offset, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 2)
+        
+        y_offset += 18
+        for filt in status[:5]:  # Show max 5 filters
+            color = (0, 255, 0) if filt["enabled"] else (100, 100, 100)
+            text = f"{'ON' if filt['enabled'] else 'OFF'} {filt['name'][:12]}"
+            cv2.putText(frame, text, (x_offset, y_offset),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, color, 1)
+            y_offset += 14
+    
     def _draw_lens_flare_eye(self, frame, center, t):
         """Draw an anime-style lens flare / sharingan glowing eye effect."""
         cx, cy = int(center[0]), int(center[1])
@@ -760,7 +801,7 @@ class MaxHeadroomTracker:
             LOG.warning("Continuing without WebSocket")
         
         self.running = True
-        LOG.info("Tracker running - Q:quit | T:test mode | E:eye glow")
+        LOG.info("Tracker v%s - Q:quit T:test E:eye B:beauty G:bg A:AR M:morph C:color R:reset", VERSION)
         
         frame_delay = int(1000 / self.config.target_fps)
         face_rect = None
@@ -789,6 +830,21 @@ class MaxHeadroomTracker:
             blendshapes, landmarks, pose = self.process_frame(frame)
             
             self.draw_overlay(frame, blendshapes, pose, landmarks, face_rect)
+            
+            # Apply Snapchat/WhatsApp level filters
+            if self.filter_manager:
+                frame = self.filter_manager.process(
+                    frame,
+                    landmarks=landmarks,
+                    face_rect=face_rect,
+                    blendshapes=blendshapes,
+                    head_pose=pose,
+                    frame_id=self.frame_count
+                )
+            
+            # Draw filter HUD
+            if self.filter_manager:
+                self._draw_filter_hud(frame)
             
             data = {
                 "type": "face_data",
@@ -830,6 +886,27 @@ class MaxHeadroomTracker:
             if key == ord('e') or key == ord('E'):
                 self.config.eye_glow = not self.config.eye_glow
                 LOG.info("Eye glow toggled: %s", self.config.eye_glow)
+            
+            # Filter hotkeys
+            if self.filter_manager:
+                if key == ord('b') or key == ord('B'):
+                    self.filter_manager.toggle_filter("Skin Smoothing")
+                    LOG.info("Beauty filter toggled")
+                if key == ord('g') or key == ord('G'):
+                    self.filter_manager.toggle_filter("Background")
+                    LOG.info("Background filter toggled")
+                if key == ord('a') or key == ord('A'):
+                    self.filter_manager.toggle_filter("AR Overlay")
+                    LOG.info("AR overlay toggled")
+                if key == ord('m') or key == ord('M'):
+                    self.filter_manager.toggle_filter("Face Morph")
+                    LOG.info("Face morph toggled")
+                if key == ord('c') or key == ord('C'):
+                    self.filter_manager.toggle_filter("Color Grading")
+                    LOG.info("Color grading toggled")
+                if key == ord('r') or key == ord('R'):
+                    self.filter_manager.reset()
+                    LOG.info("All filters reset")
         
         self.stop()
     
