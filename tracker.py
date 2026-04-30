@@ -46,6 +46,7 @@ class Config:
     test_mode = False
     digital_mode = True
     glitch_intensity = 0.15
+    eye_glow = False
 
 @dataclass
 class BlendShapeConfig:
@@ -584,6 +585,10 @@ class MaxHeadroomTracker:
                 for i, (lx, ly) in enumerate(landmarks[:68]):
                     cv2.circle(frame, (lx + glitch_x, ly + glitch_y), 
                                1 + (i % 2), colors[i % 3], -1)
+                
+                # Advanced eye tracking + red glow effect
+                if len(landmarks) >= 48:
+                    self._draw_eye_effects(frame, landmarks, glitch_x, glitch_y)
         
         y_offset = 70
         display_shapes = list(self.blendshape_calc.ARKIT_BLENDSHAPES[:12])
@@ -618,6 +623,102 @@ class MaxHeadroomTracker:
         ws_color = (0, 255, 0) if self.ws else (0, 50, 0)
         cv2.putText(frame, "WS:ON" if self.ws else "WS:--", (w - 70, h - 20),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, ws_color, 2)
+        
+        # Eye glow status indicator
+        if self.config.eye_glow:
+            cv2.putText(frame, "EYE:GLOW", (w - 150, h - 40),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 2)
+    
+    def _draw_eye_effects(self, frame, landmarks, glitch_x, glitch_y):
+        """Draw advanced eye tracking visualization and red glow effect."""
+        if len(landmarks) < 48:
+            return
+        
+        h, w = frame.shape[:2]
+        t = time.time()
+        
+        # Eye landmark indices (dlib 68-point model)
+        left_eye_indices = list(range(36, 42))
+        right_eye_indices = list(range(42, 48))
+        
+        # Calculate eye centers
+        def get_eye_center(indices):
+            pts = [landmarks[i] for i in indices if i < len(landmarks)]
+            if not pts:
+                return None
+            cx = sum(p[0] for p in pts) // len(pts)
+            cy = sum(p[1] for p in pts) // len(pts)
+            return (cx + glitch_x, cy + glitch_y)
+        
+        # Calculate eye openness (vertical distance)
+        def get_eye_openness(indices):
+            if max(indices) >= len(landmarks):
+                return 0.0
+            # Top and bottom points of eye
+            top_y = min(landmarks[i][1] for i in indices)
+            bottom_y = max(landmarks[i][1] for i in indices)
+            return float(bottom_y - top_y)
+        
+        left_center = get_eye_center(left_eye_indices)
+        right_center = get_eye_center(right_eye_indices)
+        left_open = get_eye_openness(left_eye_indices)
+        right_open = get_eye_openness(right_eye_indices)
+        
+        # Advanced eye tracking visualization
+        if left_center:
+            lx, ly = left_center
+            # Draw eye openness indicator
+            openness_pct = min(1.0, left_open / 20.0)
+            bar_h = int(openness_pct * 30)
+            cv2.rectangle(frame, (lx - 25, ly - 35), (lx - 15, ly - 35 + bar_h), (0, 255, 255), -1)
+            cv2.rectangle(frame, (lx - 25, ly - 35), (lx - 15, ly - 5), (100, 100, 100), 1)
+            cv2.putText(frame, f"L:{openness_pct:.1f}", (lx - 35, ly - 40),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 255), 1)
+            
+            # Draw pupil position estimation
+            pupil_x = lx + int(3 * np.sin(t * 2))
+            pupil_y = ly + int(2 * np.cos(t * 1.5))
+            cv2.circle(frame, (pupil_x, pupil_y), 3, (255, 255, 0), -1)
+            cv2.circle(frame, (pupil_x, pupil_y), 6, (255, 255, 0), 1)
+        
+        if right_center:
+            rx, ry = right_center
+            openness_pct = min(1.0, right_open / 20.0)
+            bar_h = int(openness_pct * 30)
+            cv2.rectangle(frame, (rx + 15, ry - 35), (rx + 25, ry - 35 + bar_h), (0, 255, 255), -1)
+            cv2.rectangle(frame, (rx + 15, ry - 35), (rx + 25, ry - 5), (100, 100, 100), 1)
+            cv2.putText(frame, f"R:{openness_pct:.1f}", (rx + 15, ry - 40),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 255), 1)
+            
+            pupil_x = rx + int(3 * np.sin(t * 2 + 1))
+            pupil_y = ry + int(2 * np.cos(t * 1.5 + 1))
+            cv2.circle(frame, (pupil_x, pupil_y), 3, (255, 255, 0), -1)
+            cv2.circle(frame, (pupil_x, pupil_y), 6, (255, 255, 0), 1)
+        
+        # Red glowing eye filter
+        if self.config.eye_glow:
+            pulse = 0.5 + 0.5 * np.sin(t * 8)  # Fast pulse 0..1
+            
+            for center, is_left in [(left_center, True), (right_center, False)]:
+                if center is None:
+                    continue
+                cx, cy = center
+                
+                # Multiple layers for glow effect
+                for radius, alpha in [(25, 0.1), (18, 0.2), (12, 0.4), (8, 0.6)]:
+                    intensity = int(255 * alpha * (0.7 + 0.3 * pulse))
+                    color = (0, 0, intensity)  # BGR - pure red
+                    cv2.circle(frame, (cx, cy), radius, color, -1)
+                
+                # Bright core
+                core_intensity = int(200 + 55 * pulse)
+                cv2.circle(frame, (cx, cy), 4, (0, 0, core_intensity), -1)
+                cv2.circle(frame, (cx, cy), 6, (50, 50, 255), 2)
+                
+                # Eye label
+                label = "L" if is_left else "R"
+                cv2.putText(frame, label, (cx - 5, cy + 4),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 2)
     
     def run(self):
         """Main tracking loop."""
@@ -629,7 +730,7 @@ class MaxHeadroomTracker:
             LOG.warning("Continuing without WebSocket")
         
         self.running = True
-        LOG.info("Tracker running - Press Q to quit, T to toggle test mode")
+        LOG.info("Tracker running - Q:quit | T:test mode | E:eye glow")
         
         frame_delay = int(1000 / self.config.target_fps)
         face_rect = None
@@ -696,6 +797,9 @@ class MaxHeadroomTracker:
             if key == ord('t') or key == ord('T'):
                 self.config.test_mode = not self.config.test_mode
                 LOG.info("Test mode toggled: %s", self.config.test_mode)
+            if key == ord('e') or key == ord('E'):
+                self.config.eye_glow = not self.config.eye_glow
+                LOG.info("Eye glow toggled: %s", self.config.eye_glow)
         
         self.stop()
     
@@ -726,6 +830,7 @@ def main():
     parser.add_argument("--test", action="store_true", help="Start in test mode")
     parser.add_argument("--digital", action="store_true", default=True, help="Digital entity mode (default: on)")
     parser.add_argument("--glitch", type=float, default=None, help="Glitch intensity (0.0-1.0)")
+    parser.add_argument("--eye-glow", action="store_true", help="Enable red glowing eye filter")
     args = parser.parse_args()
     
     LOG.info("Max Headroom Digitizer v%s", VERSION)
@@ -742,6 +847,7 @@ def main():
     config.digital_mode = args.digital
     if args.glitch is not None:
         config.glitch_intensity = max(0.0, min(1.0, args.glitch))
+    config.eye_glow = args.eye_glow
     
     tracker = MaxHeadroomTracker(config)
     tracker.run()
