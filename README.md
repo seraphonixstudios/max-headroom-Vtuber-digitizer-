@@ -1,4 +1,4 @@
-# Max Headroom Digitizer v3.1
+# Max Headroom Digitizer v3.2
 
 Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, webcam face capture, WebSocket streaming, OBS integration, and multi-platform export.
 
@@ -9,8 +9,23 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 | |  | | (_| | |  __/ |_| | | |  __/ |  | |_| | |  __/ (_| |
 |_|  |_|\__,_|_|\___|\__|_| |_|\___|_|   \__|_|  \___|\__, |
                                                       |___/
-                Digital Entity VTuber System v3.1
+                Digital Entity VTuber System v3.2
 ```
+
+## What's New in v3.2
+
+| Feature | Description |
+|---------|-------------|
+| **LED Status Indicators** | Pulsing CAM / TRACK / NET status lights with color coding |
+| **Real Blendshape Bars** | Live horizontal bar chart showing top 12 active blendshapes |
+| **Head Pose Display** | Real-time rotation & translation values panel |
+| **Filter Button Feedback** | Active filters highlight with cyan glow; inactive dim |
+| **Keyboard Shortcuts** | D/B/C/G/A/M/R/Q hotkeys bound in GUI |
+| **Camera Auto-Recovery** | Automatic camera reconnection with 3s retry backoff |
+| **WS Auto-Reconnect** | Exponential backoff WebSocket reconnection (up to 5 attempts) |
+| **Thread-Safe GUI** | Frame queue with lock; skips updates if GUI falls behind |
+| **Performance HUD** | Live FPS, packet count, and frame processing time display |
+| **Shortcut Legend** | Visual hotkey reference in bottom status bar |
 
 ## What's New in v3.1
 
@@ -506,7 +521,7 @@ python test_v31.py
 # Filter system tests (37 tests)
 python test_filters.py
 
-# End-to-end integration tests (25 tests)
+# End-to-end integration tests (39 tests)
 python test_e2e.py
 
 # SOTA graphics engine tests (34 tests)
@@ -525,9 +540,9 @@ python launch.py --quick-test
 | v3.0 Core | 24 | ✅ Pass |
 | v3.1 Pipeline | 16 | ✅ Pass |
 | Filter System | 37 | ✅ Pass |
-| End-to-End | 25 | ✅ Pass |
+| End-to-End | 39 | ✅ Pass |
 | SOTA Graphics | 34 | ✅ Pass |
-| **Total** | **136** | **✅ 100%** |
+| **Total** | **150** | **✅ 100%** |
 
 ---
 

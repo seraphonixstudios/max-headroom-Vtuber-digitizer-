@@ -813,6 +813,137 @@ class WaveformCanvas(tk.Canvas):
         self._after_id = self.after(50, self._animate)
 
 # ============================================================================
+# STATUS INDICATOR - LED-style status light with pulse
+# ============================================================================
+class StatusIndicator(tk.Canvas):
+    """
+    LED-style status indicator with pulsing glow animation.
+    Shows real system state with color coding.
+    """
+    
+    def __init__(self, parent, width=16, height=16, color=Colors.ALERT, **kwargs):
+        super().__init__(parent, width=width, height=height, bg=Colors.DARK_PANEL,
+                        highlightthickness=0, **kwargs)
+        self.color = color
+        self.pulse = 0.0
+        self._after_id = None
+        self._animate()
+    
+    def set_color(self, color):
+        """Change indicator color."""
+        self.color = color
+        self._draw()
+    
+    def _animate(self):
+        self.pulse = (math.sin(time.time() * 3) + 1) / 2
+        self._draw()
+        self._after_id = self.after(100, self._animate)
+    
+    def _draw(self):
+        self.delete("all")
+        w = int(self['width'])
+        h = int(self['height'])
+        cx, cy = w // 2, h // 2
+        r = min(cx, cy) - 2
+        
+        # Outer glow (pulsing)
+        glow_r = r + 2 + int(self.pulse * 3)
+        glow_alpha = int(30 + self.pulse * 40)
+        glow_color = self._hex_with_alpha(self.color, glow_alpha)
+        self.create_oval(cx - glow_r, cy - glow_r, cx + glow_r, cy + glow_r,
+                        fill=glow_color, outline="")
+        
+        # Main circle
+        self.create_oval(cx - r, cy - r, cx + r, cy + r,
+                        fill=self.color, outline="")
+        
+        # Highlight
+        self.create_oval(cx - r//2, cy - r//2, cx + r//3, cy + r//3,
+                        fill="white", outline="", stipple="gray75")
+    
+    def _hex_with_alpha(self, hex_color, alpha):
+        """Convert hex color to RGB tuple for stipple."""
+        hex_color = hex_color.lstrip('#')
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        return f"#{r:02x}{g:02x}{b:02x}"
+    
+    def destroy(self):
+        if self._after_id:
+            self.after_cancel(self._after_id)
+        super().destroy()
+
+# ============================================================================
+# BLENDSHAPE BARS - Real-time blendshape visualization
+# ============================================================================
+class BlendshapeBars(tk.Canvas):
+    """
+    Real-time horizontal bar chart for blendshape values.
+    Updates from actual tracking data.
+    """
+    
+    def __init__(self, parent, width=260, height=200, max_bars=12, **kwargs):
+        super().__init__(parent, width=width, height=height, bg=Colors.DARK_PANEL,
+                        highlightthickness=0, **kwargs)
+        self.max_bars = max_bars
+        self.bar_height = 14
+        self.bar_gap = 4
+        self.values = {}  # name -> value
+        self._draw_empty()
+    
+    def update_values(self, values: dict):
+        """Update blendshape values. values: dict of name->float (0.0-1.0)"""
+        self.values = values
+        self._draw()
+    
+    def _draw_empty(self):
+        self.delete("all")
+        w = int(self['width'])
+        h = int(self['height'])
+        self.create_text(w // 2, h // 2, text="AWAITING TRACKING DATA...",
+                        fill=Colors.MATRIX_DARK, font=("Consolas", 10))
+    
+    def _draw(self):
+        self.delete("all")
+        w = int(self['width'])
+        
+        # Sort by value descending, take top max_bars
+        sorted_vals = sorted(self.values.items(), key=lambda x: x[1], reverse=True)[:self.max_bars]
+        
+        y_offset = 2
+        for name, val in sorted_vals:
+            bar_w = int(val * (w - 80))
+            
+            # Background bar
+            self.create_rectangle(75, y_offset, w - 5, y_offset + self.bar_height,
+                                outline=Colors.SCANLINE, width=1)
+            
+            # Fill bar with gradient color
+            if val > 0.7:
+                color = Colors.WARNING
+            elif val > 0.4:
+                color = Colors.ATLANTEAN_TEAL
+            else:
+                color = Colors.CRYSTAL_BLUE
+            
+            if bar_w > 0:
+                self.create_rectangle(75, y_offset, 75 + bar_w, y_offset + self.bar_height,
+                                    fill=color, outline="", stipple="gray75")
+            
+            # Label (truncated)
+            label = name[:12].ljust(12)
+            self.create_text(2, y_offset + self.bar_height // 2, text=label,
+                           fill=Colors.CRT_CYAN, font=("Consolas", 8), anchor="w")
+            
+            # Percentage
+            pct = f"{int(val * 100):3d}%"
+            self.create_text(w - 2, y_offset + self.bar_height // 2, text=pct,
+                           fill=Colors.CRT_GREEN, font=("Consolas", 8), anchor="e")
+            
+            y_offset += self.bar_height + self.bar_gap
+
+# ============================================================================
 # THEME HELPER - Apply theme to standard widgets
 # ============================================================================
 def apply_dark_theme(root):
