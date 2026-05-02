@@ -263,9 +263,8 @@ class CRTOverlayCanvas(tk.Canvas):
     """
     
     def __init__(self, parent, width=640, height=480, **kwargs):
-        super().__init__(parent, width=width, height=height, bg="",
+        super().__init__(parent, width=width, height=height, bg=Colors.VOID_BLACK,
                         highlightthickness=0, **kwargs)
-        self['bg'] = ''  # Transparent
         self.scanline_ids = []
         self.flicker = 0
         self.running = False
@@ -505,9 +504,8 @@ class HUDOverlay(tk.Canvas):
     """
     
     def __init__(self, parent, width=640, height=480, **kwargs):
-        super().__init__(parent, width=width, height=height, bg="",
+        super().__init__(parent, width=width, height=height, bg=Colors.VOID_BLACK,
                         highlightthickness=0, **kwargs)
-        self['bg'] = ''
         self.rotation = 0
         self.running = False
         self._after_id = None
