@@ -762,11 +762,11 @@ class MaxHeadroomApp:
             return
         for filt in self.filter_manager.filters:
             btn = self.filter_btn_refs.get(filt.name)
-            if btn:
+            if btn and hasattr(btn, 'set_color'):
                 if filt.enabled:
-                    btn.config(fg=Colors.CRT_CYAN)
+                    btn.set_color(Colors.CRT_CYAN)
                 else:
-                    btn.config(fg=Colors.MATRIX_DARK)
+                    btn.set_color(Colors.MATRIX_DARK)
     
     def _update_status_indicators(self, tracking_active: bool):
         """Update LED status indicators based on system state."""

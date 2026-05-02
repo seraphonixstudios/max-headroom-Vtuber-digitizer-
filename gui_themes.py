@@ -386,6 +386,11 @@ class NeonButton(tk.Canvas):
         self._draw()
         if self.command and self.hovered:
             self.command()
+    
+    def set_color(self, color):
+        """Change button color and redraw."""
+        self.color = color
+        self._draw()
 
 # ============================================================================
 # CRYSTALLINE PANEL FRAME
