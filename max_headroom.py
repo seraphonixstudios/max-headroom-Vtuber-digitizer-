@@ -237,8 +237,12 @@ class MaxHeadroomApp:
     
     def init(self) -> bool:
         print("[Init] Loading face detector...")
-        self.detector = FaceDetector()
-        print("[Init] Face detector loaded")
+        try:
+            self.detector = FaceDetector()
+            print("[Init] Face detector loaded")
+        except Exception as e:
+            print(f"[Init] Face detector failed: {e}")
+            self.detector = None
         
         if not self.config.test_mode:
             self._open_camera()
@@ -296,9 +300,12 @@ class MaxHeadroomApp:
     def process_frame(self, frame, time_val: float) -> FaceTrackingData:
         face_rect = None
         
-        if not self.config.test_mode and frame is not None:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            face_rect = self.detector.detect(gray)
+        if not self.config.test_mode and frame is not None and self.detector is not None:
+            try:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                face_rect = self.detector.detect(gray)
+            except Exception as e:
+                self._try_log(f"Face detection error: {e}", "warning")
         
         blends = self.blendshape_calc.calculate(face_rect, time_val)
         
@@ -415,6 +422,9 @@ class MaxHeadroomApp:
         if not GUI_AVAILABLE:
             return self.run_cli()
         
+        # Initialize camera BEFORE building GUI
+        self.init()
+        
         # Import themed components
         try:
             from gui_themes import (
@@ -429,284 +439,449 @@ class MaxHeadroomApp:
             THEMES_AVAILABLE = False
             return self._run_basic_gui()
         
+        # =====================================================================
+        # ROOT WINDOW SETUP
+        # =====================================================================
         self.root = tk.Tk()
         self.root.title(f"{self.WINDOW_NAME} v{VERSION}")
-        self.root.geometry("1280x1024")
-        self.root.configure(bg=Colors.DEEP_SPACE)
-        self.root.minsize(1000, 800)
+        self.root.geometry("1366x900")
+        self.root.configure(bg=Colors.VOID_BLACK)
+        self.root.minsize(1100, 750)
         apply_dark_theme(self.root)
         
         # =====================================================================
-        # TOP BAR
+        # STYLES
         # =====================================================================
-        top_frame = tk.Frame(self.root, bg=Colors.DEEP_SPACE)
-        top_frame.pack(fill=tk.X, padx=10, pady=5)
+        PANEL_BG = "#0a0e1a"
+        BORDER_COLOR = "#1a2a3a"
+        ACCENT_CYAN = "#00d4ff"
+        TEXT_DIM = "#557788"
+        TEXT_BRIGHT = "#aaddff"
         
-        self.title_label = GlitchLabel(top_frame, text=f"MAX HEADROOM DIGITIZER v{VERSION}",
-                                       color=Colors.CRT_CYAN, font=("Consolas", 20, "bold"))
-        self.title_label.pack(side=tk.LEFT, padx=10)
+        # =====================================================================
+        # TOP BAR - Studio Header
+        # =====================================================================
+        top_bar = tk.Frame(self.root, bg=Colors.VOID_BLACK, height=36)
+        top_bar.pack(fill=tk.X, padx=0, pady=0)
+        top_bar.pack_propagate(False)
         
-        # Status indicators row
-        status_row = tk.Frame(top_frame, bg=Colors.DEEP_SPACE)
-        status_row.pack(side=tk.RIGHT, padx=10)
+        # Left: Title
+        title_frame = tk.Frame(top_bar, bg=Colors.VOID_BLACK)
+        title_frame.pack(side=tk.LEFT, padx=(12, 0))
+        tk.Label(title_frame, text="MAX HEADROOM", fg=ACCENT_CYAN, bg=Colors.VOID_BLACK,
+                font=("Consolas", 14, "bold")).pack(side=tk.LEFT)
+        tk.Label(title_frame, text=f" STUDIO  v{VERSION}", fg=TEXT_DIM, bg=Colors.VOID_BLACK,
+                font=("Consolas", 10)).pack(side=tk.LEFT, padx=(4, 0))
         
-        self.cam_indicator = StatusIndicator(status_row, color=Colors.WARNING)
+        # Center: Mode indicator
+        self.mode_label = tk.Label(top_bar, text="STANDBY", fg=Colors.WARNING, bg=Colors.VOID_BLACK,
+                                  font=("Consolas", 10, "bold"))
+        self.mode_label.pack(side=tk.LEFT, padx=40)
+        
+        # Right: Status indicators
+        indicators = tk.Frame(top_bar, bg=Colors.VOID_BLACK)
+        indicators.pack(side=tk.RIGHT, padx=12)
+        
+        self.cam_indicator = StatusIndicator(indicators, color=Colors.ALERT)
         self.cam_indicator.pack(side=tk.LEFT, padx=2)
-        tk.Label(status_row, text="CAM", fg=Colors.CRT_CYAN, bg=Colors.DEEP_SPACE,
-                font=("Consolas", 8)).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(indicators, text="CAM", fg=TEXT_DIM, bg=Colors.VOID_BLACK,
+                font=("Consolas", 7)).pack(side=tk.LEFT, padx=(0, 10))
         
-        self.track_indicator = StatusIndicator(status_row, color=Colors.WARNING)
+        self.track_indicator = StatusIndicator(indicators, color=Colors.ALERT)
         self.track_indicator.pack(side=tk.LEFT, padx=2)
-        tk.Label(status_row, text="TRACK", fg=Colors.CRT_CYAN, bg=Colors.DEEP_SPACE,
-                font=("Consolas", 8)).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(indicators, text="TRACK", fg=TEXT_DIM, bg=Colors.VOID_BLACK,
+                font=("Consolas", 7)).pack(side=tk.LEFT, padx=(0, 10))
         
-        self.ws_indicator = StatusIndicator(status_row, color=Colors.ALERT)
+        self.ws_indicator = StatusIndicator(indicators, color=Colors.ALERT)
         self.ws_indicator.pack(side=tk.LEFT, padx=2)
-        tk.Label(status_row, text="NET", fg=Colors.CRT_CYAN, bg=Colors.DEEP_SPACE,
-                font=("Consolas", 8)).pack(side=tk.LEFT, padx=(0, 8))
-        
-        # Matrix rain strip
-        self.matrix_rain = MatrixRainCanvas(top_frame, width=300, height=40,
-                                           column_spacing=10, font_size=10)
-        self.matrix_rain.pack(side=tk.RIGHT, padx=10)
-        self.matrix_rain.start()
+        tk.Label(indicators, text="NET", fg=TEXT_DIM, bg=Colors.VOID_BLACK,
+                font=("Consolas", 7)).pack(side=tk.LEFT, padx=(0, 0))
         
         # =====================================================================
-        # MAIN CONTENT
+        # MAIN WORKSPACE - OBS Style: Preview Left, Dock Right
         # =====================================================================
-        main_frame = tk.Frame(self.root, bg=Colors.DEEP_SPACE)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        workspace = tk.Frame(self.root, bg=Colors.VOID_BLACK)
+        workspace.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
         
-        # ---- LEFT COLUMN: Video + visualizers ----
-        left_frame = tk.Frame(main_frame, bg=Colors.DEEP_SPACE)
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        # ---- LEFT: Preview Monitor ----
+        preview_frame = tk.Frame(workspace, bg=PANEL_BG, highlightbackground=BORDER_COLOR,
+                                highlightthickness=1)
+        preview_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
         
-        # Video container
-        video_container = tk.Frame(left_frame, bg=Colors.DEEP_SPACE)
-        video_container.pack(fill=tk.BOTH, expand=True)
+        # Preview header bar
+        preview_header = tk.Frame(preview_frame, bg=PANEL_BG, height=24)
+        preview_header.pack(fill=tk.X, padx=0, pady=0)
+        preview_header.pack_propagate(False)
+        tk.Label(preview_header, text="PREVIEW", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8)).pack(side=tk.LEFT, padx=8)
+        self.preview_res_label = tk.Label(preview_header, text="640x480", fg=TEXT_DIM,
+                                         bg=PANEL_BG, font=("Consolas", 8))
+        self.preview_res_label.pack(side=tk.RIGHT, padx=8)
         
-        self.canvas = tk.Canvas(video_container, width=640, height=480,
-                               bg=Colors.VOID_BLACK, highlightthickness=0)
+        # Video canvas with fixed aspect container
+        video_container = tk.Frame(preview_frame, bg=Colors.VOID_BLACK)
+        video_container.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        
+        self.canvas = tk.Canvas(video_container, bg=Colors.VOID_BLACK, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
         
-        # Overlays
+        # Corner bracket overlay (broadcast monitor style)
+        self._draw_preview_brackets()
+        
+        # CRT overlay
         self.crt_overlay = CRTOverlayCanvas(video_container, width=640, height=480)
         self.crt_overlay.place(x=0, y=0, relwidth=1, relheight=1)
         self.crt_overlay.start()
         
+        # HUD overlay
         self.hud_overlay = HUDOverlay(video_container, width=640, height=480)
         self.hud_overlay.place(x=0, y=0, relwidth=1, relheight=1)
         self.hud_overlay.start()
         
-        # Video status bar
-        video_status = tk.Frame(left_frame, bg=Colors.DEEP_SPACE)
-        video_status.pack(fill=tk.X, pady=2)
+        # ---- RIGHT: Control Dock ----
+        dock = tk.Frame(workspace, bg=Colors.VOID_BLACK, width=340)
+        dock.pack(side=tk.RIGHT, fill=tk.Y, padx=(4, 0))
+        dock.pack_propagate(False)
         
-        self.video_status_label = tk.Label(video_status, text="CAMERA: STANDBY",
-                                          fg=Colors.WARNING, bg=Colors.DEEP_SPACE,
-                                          font=("Consolas", 9, "bold"))
-        self.video_status_label.pack(side=tk.LEFT)
+        # --- SCENES Panel ---
+        scenes_panel = tk.Frame(dock, bg=PANEL_BG, highlightbackground=BORDER_COLOR,
+                               highlightthickness=1)
+        scenes_panel.pack(fill=tk.X, pady=(0, 4))
         
-        self.fps_label = tk.Label(video_status, text="FPS: 0",
-                                 fg=Colors.CRT_CYAN, bg=Colors.DEEP_SPACE,
-                                 font=("Consolas", 9))
-        self.fps_label.pack(side=tk.LEFT, padx=20)
+        scenes_header = tk.Frame(scenes_panel, bg=PANEL_BG, height=22)
+        scenes_header.pack(fill=tk.X)
+        scenes_header.pack_propagate(False)
+        tk.Label(scenes_header, text="SCENES", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8, "bold")).pack(side=tk.LEFT, padx=8)
         
-        self.packets_label = tk.Label(video_status, text="PKT: 0",
-                                     fg=Colors.CRYSTAL_BLUE, bg=Colors.DEEP_SPACE,
-                                     font=("Consolas", 9))
-        self.packets_label.pack(side=tk.LEFT)
+        scenes_list = tk.Frame(scenes_panel, bg=PANEL_BG)
+        scenes_list.pack(fill=tk.X, padx=4, pady=4)
         
-        self.frame_time_label = tk.Label(video_status, text="FRAME: 0ms",
-                                        fg=Colors.ATLANTEAN_TEAL, bg=Colors.DEEP_SPACE,
-                                        font=("Consolas", 9))
-        self.frame_time_label.pack(side=tk.RIGHT)
-        
-        # Waveform below video
-        self.waveform = WaveformCanvas(left_frame, bars=32, width=640, height=50,
-                                      color=Colors.CRYSTAL_BLUE)
-        self.waveform.pack(fill=tk.X, pady=5)
-        self.waveform.start()
-        
-        # ---- RIGHT COLUMN: Controls ----
-        right_frame = tk.Frame(main_frame, bg=Colors.DEEP_SPACE)
-        right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
-        
-        # Connection panel
-        conn_panel = CrystallineFrame(right_frame, width=300, height=130,
-                                     title="NETWORK LINK", color=Colors.CRYSTAL_BLUE)
-        conn_panel.pack(pady=5, fill=tk.X)
-        
-        conn_inner = tk.Frame(right_frame, bg=Colors.DARK_PANEL)
-        conn_inner.place(in_=conn_panel, x=10, y=30, width=280, height=90)
-        
-        tk.Label(conn_inner, text="HOST:", fg=Colors.CRT_CYAN, bg=Colors.DARK_PANEL,
-                font=("Consolas", 9)).grid(row=0, column=0, sticky="w", pady=2)
-        self.host_entry = tk.Entry(conn_inner, width=14, fg=Colors.CRT_CYAN,
-                                  bg=Colors.VOID_BLACK, insertbackground=Colors.CRT_CYAN,
-                                  font=("Consolas", 9))
-        self.host_entry.insert(0, self.config.ws_host)
-        self.host_entry.grid(row=0, column=1, padx=5, pady=2)
-        
-        tk.Label(conn_inner, text="PORT:", fg=Colors.CRT_CYAN, bg=Colors.DARK_PANEL,
-                font=("Consolas", 9)).grid(row=1, column=0, sticky="w", pady=2)
-        self.port_entry = tk.Entry(conn_inner, width=8, fg=Colors.CRT_CYAN,
-                                  bg=Colors.VOID_BLACK, insertbackground=Colors.CRT_CYAN,
-                                  font=("Consolas", 9))
-        self.port_entry.insert(0, str(self.config.ws_port))
-        self.port_entry.grid(row=1, column=1, padx=5, pady=2, sticky="w")
-        
-        self.connect_btn = NeonButton(conn_inner, text="LINK", width=80, height=28,
-                                     color=Colors.ATLANTEAN_TEAL,
-                                     command=self.on_connect)
-        self.connect_btn.grid(row=2, column=0, columnspan=2, pady=8)
-        
-        self.ws_status_text = tk.Label(conn_inner, text="OFFLINE", fg=Colors.ALERT,
-                                      bg=Colors.DARK_PANEL, font=("Consolas", 9, "bold"))
-        self.ws_status_text.grid(row=0, column=2, rowspan=3, padx=10)
-        
-        # Filter Control Panel
-        filter_panel = CrystallineFrame(right_frame, width=300, height=240,
-                                       title="FILTER MATRIX", color=Colors.ATLANTEAN_TEAL)
-        filter_panel.pack(pady=5, fill=tk.X)
-        
-        filter_inner = tk.Frame(right_frame, bg=Colors.DARK_PANEL)
-        filter_inner.place(in_=filter_panel, x=10, y=30, width=280, height=200)
-        
-        filter_buttons = [
-            ("ANDROID", "Max Headroom", Colors.NEON_PINK, Colors.NEON_PURPLE),
-            ("BEAUTY", "Skin Smoothing", Colors.ATLANTEAN_TEAL, Colors.AQUA_GLOW),
-            ("BACKGROUND", "Background", Colors.PLASMA_BLUE, Colors.CRYSTAL_BLUE),
-            ("AR", "AR Overlay", Colors.SACRED_GOLD, Colors.CRT_CYAN),
-            ("MORPH", "Face Morph", Colors.NEON_ORANGE, Colors.WARNING),
-            ("COLOR", "Color Grading", Colors.MATRIX_GREEN, Colors.CRT_GREEN),
+        scene_items = [
+            ("Default", None),
+            ("Android Mode", lambda: self._activate_scene("android")),
+            ("Beauty Mode", lambda: self._activate_scene("beauty")),
+            ("Color Grade", lambda: self._activate_scene("color")),
         ]
+        self.scene_btn_refs = {}
+        for name, cmd in scene_items:
+            lbl = tk.Label(scenes_list, text=f"  {name}", fg=TEXT_BRIGHT, bg=PANEL_BG,
+                          font=("Consolas", 9), anchor="w", cursor="hand2")
+            lbl.pack(fill=tk.X, pady=1)
+            if cmd:
+                lbl.bind("<Button-1>", lambda e, c=cmd: c())
+            self.scene_btn_refs[name] = lbl
+        self._highlight_scene("Default")
         
-        self.filter_btn_refs = {}
-        for i, (label, filt_name, color, hover) in enumerate(filter_buttons):
-            row = i // 2
-            col = i % 2
-            btn = NeonButton(filter_inner, text=label, width=120, height=28,
-                           color=color, hover_color=hover,
-                           command=lambda n=filt_name: self._toggle_filter(n))
-            btn.grid(row=row, column=col, padx=4, pady=4)
-            self.filter_btn_refs[filt_name] = btn
+        # --- SOURCES Panel (Filter Toggles) ---
+        sources_panel = tk.Frame(dock, bg=PANEL_BG, highlightbackground=BORDER_COLOR,
+                                highlightthickness=1)
+        sources_panel.pack(fill=tk.X, pady=(0, 4))
         
-        reset_btn = NeonButton(filter_inner, text="RESET ALL", width=120, height=28,
-                              color=Colors.ALERT, hover_color=Colors.WARNING,
-                              command=self._reset_filters)
-        reset_btn.grid(row=3, column=0, padx=4, pady=4)
+        sources_header = tk.Frame(sources_panel, bg=PANEL_BG, height=22)
+        sources_header.pack(fill=tk.X)
+        sources_header.pack_propagate(False)
+        tk.Label(sources_header, text="SOURCES", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8, "bold")).pack(side=tk.LEFT, padx=8)
         
-        tk.Label(filter_inner, text="GLITCH:", fg=Colors.CRT_CYAN,
-                bg=Colors.DARK_PANEL, font=("Consolas", 8)).grid(row=3, column=1, sticky="w")
-        self.glitch_scale = tk.Scale(filter_inner, from_=0, to=100, orient=tk.HORIZONTAL,
-                                    fg=Colors.CRT_CYAN, bg=Colors.DARK_PANEL,
-                                    troughcolor=Colors.SCANLINE, highlightthickness=0,
-                                    command=self.on_glitch_change, length=100, showvalue=0)
+        sources_list = tk.Frame(sources_panel, bg=PANEL_BG)
+        sources_list.pack(fill=tk.X, padx=4, pady=4)
+        
+        filter_items = [
+            ("Max Headroom", "MH", Colors.NEON_PINK),
+            ("Skin Smoothing", "SKIN", Colors.ATLANTEAN_TEAL),
+            ("Background", "BG", Colors.PLASMA_BLUE),
+            ("AR Overlay", "AR", Colors.SACRED_GOLD),
+            ("Face Morph", "MORPH", Colors.NEON_ORANGE),
+            ("Color Grading", "COLOR", Colors.MATRIX_GREEN),
+        ]
+        self.filter_toggle_refs = {}
+        for name, abbr, color in filter_items:
+            row = tk.Frame(sources_list, bg=PANEL_BG)
+            row.pack(fill=tk.X, pady=2)
+            
+            eye = tk.Label(row, text="●", fg=TEXT_DIM, bg=PANEL_BG, font=("Consolas", 10))
+            eye.pack(side=tk.LEFT, padx=(4, 4))
+            
+            lbl = tk.Label(row, text=name, fg=TEXT_BRIGHT, bg=PANEL_BG,
+                          font=("Consolas", 9), anchor="w")
+            lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            
+            abbr_lbl = tk.Label(row, text=abbr, fg=color, bg=PANEL_BG,
+                               font=("Consolas", 8, "bold"))
+            abbr_lbl.pack(side=tk.RIGHT, padx=4)
+            
+            # Click to toggle
+            for widget in (row, eye, lbl, abbr_lbl):
+                widget.bind("<Button-1>", lambda e, n=name: self._toggle_filter(n))
+            
+            self.filter_toggle_refs[name] = {"eye": eye, "label": lbl, "abbr": abbr_lbl, "color": color}
+        
+        # Glitch intensity slider
+        slider_row = tk.Frame(sources_panel, bg=PANEL_BG)
+        slider_row.pack(fill=tk.X, padx=8, pady=(0, 6))
+        tk.Label(slider_row, text="GLITCH:", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8)).pack(side=tk.LEFT)
+        self.glitch_scale = tk.Scale(slider_row, from_=0, to=100, orient=tk.HORIZONTAL,
+                                    fg=ACCENT_CYAN, bg=PANEL_BG, troughcolor=BORDER_COLOR,
+                                    highlightthickness=0, command=self.on_glitch_change,
+                                    length=180, showvalue=0)
         self.glitch_scale.set(int(self.config.glitch_intensity * 100))
-        self.glitch_scale.grid(row=4, column=0, columnspan=2, sticky="ew")
+        self.glitch_scale.pack(side=tk.LEFT, padx=4)
         
-        # Blendshape Panel
-        bs_panel = CrystallineFrame(right_frame, width=300, height=240,
-                                   title="BLENDSHAPES", color=Colors.MATRIX_GREEN)
-        bs_panel.pack(pady=5, fill=tk.X)
+        # --- AUDIO MIXER (Blendshapes) ---
+        mixer_panel = tk.Frame(dock, bg=PANEL_BG, highlightbackground=BORDER_COLOR,
+                              highlightthickness=1)
+        mixer_panel.pack(fill=tk.X, pady=(0, 4), expand=True)
         
-        bs_inner = tk.Frame(right_frame, bg=Colors.DARK_PANEL)
-        bs_inner.place(in_=bs_panel, x=10, y=30, width=280, height=200)
+        mixer_header = tk.Frame(mixer_panel, bg=PANEL_BG, height=22)
+        mixer_header.pack(fill=tk.X)
+        mixer_header.pack_propagate(False)
+        tk.Label(mixer_header, text="MIXER", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8, "bold")).pack(side=tk.LEFT, padx=8)
         
-        self.bs_bars = BlendshapeBars(bs_inner, width=280, height=200, max_bars=12)
+        mixer_inner = tk.Frame(mixer_panel, bg=PANEL_BG)
+        mixer_inner.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        
+        self.bs_bars = BlendshapeBars(mixer_inner, width=320, height=240, max_bars=14)
         self.bs_bars.pack(fill=tk.BOTH, expand=True)
         
-        # Head Pose Panel
-        pose_panel = CrystallineFrame(right_frame, width=300, height=100,
-                                     title="HEAD POSE", color=Colors.SACRED_GOLD)
-        pose_panel.pack(pady=5, fill=tk.X)
+        # --- TRANSITIONS / CONTROLS ---
+        trans_panel = tk.Frame(dock, bg=PANEL_BG, highlightbackground=BORDER_COLOR,
+                              highlightthickness=1)
+        trans_panel.pack(fill=tk.X, pady=(0, 4))
         
-        pose_inner = tk.Frame(right_frame, bg=Colors.DARK_PANEL)
-        pose_inner.place(in_=pose_panel, x=10, y=30, width=280, height=60)
+        trans_inner = tk.Frame(trans_panel, bg=PANEL_BG)
+        trans_inner.pack(fill=tk.X, padx=8, pady=6)
         
-        self.pose_rot_label = tk.Label(pose_inner, text="ROT: 0.0 0.0 0.0",
-                                      fg=Colors.CRT_CYAN, bg=Colors.DARK_PANEL,
-                                      font=("Consolas", 9))
+        self.connect_btn = tk.Button(trans_inner, text="LINK NETWORK", bg=BORDER_COLOR,
+                                    fg=ACCENT_CYAN, font=("Consolas", 9, "bold"),
+                                    activebackground=ACCENT_CYAN, activeforeground=Colors.VOID_BLACK,
+                                    relief=tk.FLAT, cursor="hand2", command=self.on_connect)
+        self.connect_btn.pack(side=tk.LEFT, padx=(0, 4))
+        
+        self.test_btn = tk.Button(trans_inner, text="TEST CAMERA", bg=BORDER_COLOR,
+                                 fg=TEXT_BRIGHT, font=("Consolas", 9, "bold"),
+                                 activebackground=Colors.OK, activeforeground=Colors.VOID_BLACK,
+                                 relief=tk.FLAT, cursor="hand2", command=self._test_camera)
+        self.test_btn.pack(side=tk.LEFT, padx=4)
+        
+        self.ws_status_text = tk.Label(trans_inner, text="OFFLINE", fg=Colors.ALERT,
+                                      bg=PANEL_BG, font=("Consolas", 9, "bold"))
+        self.ws_status_text.pack(side=tk.RIGHT)
+        
+        # Host/port entries
+        net_row = tk.Frame(trans_panel, bg=PANEL_BG)
+        net_row.pack(fill=tk.X, padx=8, pady=(0, 6))
+        tk.Label(net_row, text="HOST:", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8)).pack(side=tk.LEFT)
+        self.host_entry = tk.Entry(net_row, width=12, fg=TEXT_BRIGHT,
+                                  bg=Colors.VOID_BLACK, insertbackground=ACCENT_CYAN,
+                                  font=("Consolas", 9), relief=tk.FLAT)
+        self.host_entry.insert(0, self.config.ws_host)
+        self.host_entry.pack(side=tk.LEFT, padx=4)
+        tk.Label(net_row, text="PORT:", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8)).pack(side=tk.LEFT, padx=(8, 0))
+        self.port_entry = tk.Entry(net_row, width=6, fg=TEXT_BRIGHT,
+                                  bg=Colors.VOID_BLACK, insertbackground=ACCENT_CYAN,
+                                  font=("Consolas", 9), relief=tk.FLAT)
+        self.port_entry.insert(0, str(self.config.ws_port))
+        self.port_entry.pack(side=tk.LEFT, padx=4)
+        
+        # =====================================================================
+        # BOTTOM DOCK - Audio Mixer + Stats
+        # =====================================================================
+        bottom_dock = tk.Frame(self.root, bg=Colors.VOID_BLACK, height=140)
+        bottom_dock.pack(fill=tk.X, padx=8, pady=(4, 8))
+        bottom_dock.pack_propagate(False)
+        
+        # Left: Head Pose
+        pose_frame = tk.Frame(bottom_dock, bg=PANEL_BG, highlightbackground=BORDER_COLOR,
+                             highlightthickness=1)
+        pose_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+        
+        pose_header = tk.Frame(pose_frame, bg=PANEL_BG, height=22)
+        pose_header.pack(fill=tk.X)
+        pose_header.pack_propagate(False)
+        tk.Label(pose_header, text="HEAD POSE", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8, "bold")).pack(side=tk.LEFT, padx=8)
+        
+        pose_inner = tk.Frame(pose_frame, bg=PANEL_BG)
+        pose_inner.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+        
+        self.pose_rot_label = tk.Label(pose_inner, text="ROT:  0.00   0.00   0.00",
+                                      fg=TEXT_BRIGHT, bg=PANEL_BG, font=("Consolas", 10))
         self.pose_rot_label.pack(anchor="w", pady=2)
-        
-        self.pose_trans_label = tk.Label(pose_inner, text="POS: 0.0 0.0 0.0",
-                                        fg=Colors.CRT_CYAN, bg=Colors.DARK_PANEL,
-                                        font=("Consolas", 9))
+        self.pose_trans_label = tk.Label(pose_inner, text="POS:  0.00   0.00   0.00",
+                                        fg=TEXT_BRIGHT, bg=PANEL_BG, font=("Consolas", 10))
         self.pose_trans_label.pack(anchor="w", pady=2)
         
-        # System Panel
-        sys_panel = CrystallineFrame(right_frame, width=300, height=140,
-                                    title="SYSTEM CORE", color=Colors.SACRED_GOLD)
-        sys_panel.pack(pady=5, fill=tk.X)
+        # Center: System Core
+        sys_frame = tk.Frame(bottom_dock, bg=PANEL_BG, highlightbackground=BORDER_COLOR,
+                            highlightthickness=1)
+        sys_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
         
-        sys_inner = tk.Frame(right_frame, bg=Colors.DARK_PANEL)
-        sys_inner.place(in_=sys_panel, x=10, y=30, width=280, height=100)
+        sys_header = tk.Frame(sys_frame, bg=PANEL_BG, height=22)
+        sys_header.pack(fill=tk.X)
+        sys_header.pack_propagate(False)
+        tk.Label(sys_header, text="SYSTEM CORE", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8, "bold")).pack(side=tk.LEFT, padx=8)
         
-        top_row = tk.Frame(sys_inner, bg=Colors.DARK_PANEL)
-        top_row.pack(fill=tk.X)
+        sys_inner = tk.Frame(sys_frame, bg=PANEL_BG)
+        sys_inner.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
         
-        self.sacred_geo = SacredGeometryCanvas(top_row, width=80, height=80)
-        self.sacred_geo.pack(side=tk.LEFT, padx=5)
+        sys_top = tk.Frame(sys_inner, bg=PANEL_BG)
+        sys_top.pack(fill=tk.X)
+        self.sacred_geo = SacredGeometryCanvas(sys_top, width=70, height=70)
+        self.sacred_geo.pack(side=tk.LEFT, padx=4)
         self.sacred_geo.start()
-        
-        self.hex_display = HexDisplay(top_row, rows=4, cols=4, width=120, height=80)
-        self.hex_display.pack(side=tk.RIGHT, padx=5)
+        self.hex_display = HexDisplay(sys_top, rows=4, cols=5, width=140, height=70)
+        self.hex_display.pack(side=tk.RIGHT, padx=4)
         self.hex_display.start()
         
-        # Test mode toggle
         self.test_var = tk.BooleanVar(value=self.config.test_mode)
         test_cb = tk.Checkbutton(sys_inner, text="SIMULATION MODE", variable=self.test_var,
-                                fg=Colors.MATRIX_GREEN, bg=Colors.DARK_PANEL,
-                                selectcolor=Colors.VOID_BLACK,
+                                fg=Colors.MATRIX_GREEN, bg=PANEL_BG,
+                                selectcolor=Colors.VOID_BLACK, activebackground=PANEL_BG,
                                 command=self.on_toggle_test, font=("Consolas", 8))
-        test_cb.pack(anchor="w", pady=(5, 0))
+        test_cb.pack(anchor="w", pady=(4, 0))
+        
+        # Right: Terminal Log
+        log_frame = tk.Frame(bottom_dock, bg=PANEL_BG, highlightbackground=BORDER_COLOR,
+                            highlightthickness=1)
+        log_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        log_header = tk.Frame(log_frame, bg=PANEL_BG, height=22)
+        log_header.pack(fill=tk.X)
+        log_header.pack_propagate(False)
+        tk.Label(log_header, text="CONSOLE", fg=TEXT_DIM, bg=PANEL_BG,
+                font=("Consolas", 8, "bold")).pack(side=tk.LEFT, padx=8)
+        
+        self.terminal_log = TerminalLog(log_frame, height=6, width=60)
+        self.terminal_log.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
         
         # =====================================================================
-        # BOTTOM: Terminal Log + Shortcuts
+        # STATUS BAR
         # =====================================================================
-        bottom_frame = tk.Frame(self.root, bg=Colors.DEEP_SPACE)
-        bottom_frame.pack(fill=tk.X, padx=10, pady=5)
+        status_bar = tk.Frame(self.root, bg=PANEL_BG, height=24)
+        status_bar.pack(fill=tk.X, padx=0, pady=0)
+        status_bar.pack_propagate(False)
         
-        log_frame = tk.Frame(bottom_frame, bg=Colors.DEEP_SPACE)
-        log_frame.pack(fill=tk.X, side=tk.LEFT, expand=True)
+        self.video_status_label = tk.Label(status_bar, text="CAMERA: STANDBY",
+                                          fg=Colors.WARNING, bg=PANEL_BG,
+                                          font=("Consolas", 9, "bold"))
+        self.video_status_label.pack(side=tk.LEFT, padx=12)
         
-        self.terminal_log = TerminalLog(log_frame, height=6, width=80)
-        self.terminal_log.pack(fill=tk.X)
+        self.fps_label = tk.Label(status_bar, text="FPS: 0", fg=ACCENT_CYAN,
+                                 bg=PANEL_BG, font=("Consolas", 9))
+        self.fps_label.pack(side=tk.LEFT, padx=12)
         
-        # Shortcut legend
-        shortcut_frame = tk.Frame(bottom_frame, bg=Colors.DEEP_SPACE)
-        shortcut_frame.pack(side=tk.RIGHT, padx=10)
+        self.packets_label = tk.Label(status_bar, text="PKT: 0", fg=TEXT_DIM,
+                                     bg=PANEL_BG, font=("Consolas", 9))
+        self.packets_label.pack(side=tk.LEFT, padx=12)
         
-        shortcuts = [
-            ("D", "Android"), ("B", "Beauty"), ("C", "Color"),
-            ("G", "BG"), ("A", "AR"), ("M", "Morph"),
-            ("R", "Reset"), ("Q", "Quit")
-        ]
-        for key, name in shortcuts:
-            lbl = tk.Label(shortcut_frame, text=f"[{key}] {name}",
-                          fg=Colors.MATRIX_DARK, bg=Colors.DEEP_SPACE,
-                          font=("Consolas", 8))
-            lbl.pack(side=tk.LEFT, padx=3)
+        self.frame_time_label = tk.Label(status_bar, text="FRAME: 0ms", fg=TEXT_DIM,
+                                        bg=PANEL_BG, font=("Consolas", 9))
+        self.frame_time_label.pack(side=tk.LEFT, padx=12)
         
-        self.terminal_log.log(f"System initialization v{VERSION}...", "system")
-        self.terminal_log.log("Loading face detection cascade...", "system")
-        self.terminal_log.log("Filter matrix online - 6 filters ready", "ok")
-        self.terminal_log.log("Waiting for user command...", "system")
+        tk.Label(status_bar, text="D:Android B:Beauty C:Color G:BG A:AR M:Morph R:Reset",
+                fg=TEXT_DIM, bg=PANEL_BG, font=("Consolas", 8)).pack(side=tk.RIGHT, padx=12)
+        
+        # =====================================================================
+        # INITIALIZATION
+        # =====================================================================
+        self.terminal_log.log(f"Studio initialization v{VERSION}", "system")
+        if self.config.test_mode:
+            self.terminal_log.log("Camera unavailable - running in simulation mode", "warning")
+        else:
+            self.terminal_log.log("Camera initialized", "ok")
+        self.terminal_log.log("Filter matrix online - 6 sources ready", "ok")
+        self.terminal_log.log("Press TEST CAMERA to verify video feed", "system")
         
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        
-        # Bind keyboard shortcuts
         self.root.bind("<Key>", self._on_keypress)
-        
-        # Initialize filter button states
-        self._update_filter_buttons()
         
         self.running = True
         self._tracking_thread = threading.Thread(target=self._tracking_loop, daemon=True)
         self._tracking_thread.start()
         
         self.root.mainloop()
+    
+    def _draw_preview_brackets(self):
+        """Draw broadcast monitor corner brackets on canvas."""
+        pass  # Drawn dynamically in _update_video_canvas
+    
+    def _activate_scene(self, scene_name):
+        """Activate a scene preset."""
+        self._highlight_scene(scene_name)
+        if scene_name == "android":
+            self.filter_manager.reset() if self.filter_manager else None
+            self.filter_manager.enable_filter("Max Headroom") if self.filter_manager else None
+        elif scene_name == "beauty":
+            self.filter_manager.reset() if self.filter_manager else None
+            self.filter_manager.enable_filter("Skin Smoothing") if self.filter_manager else None
+        elif scene_name == "color":
+            self.filter_manager.reset() if self.filter_manager else None
+            self.filter_manager.enable_filter("Color Grading") if self.filter_manager else None
+        self._update_filter_toggles()
+        self.terminal_log.log(f"Scene activated: {scene_name}", "ok")
+    
+    def _highlight_scene(self, scene_name):
+        """Highlight active scene in list."""
+        for name, lbl in getattr(self, 'scene_btn_refs', {}).items():
+            if name == scene_name:
+                lbl.config(fg=Colors.CRT_CYAN, bg="#1a2a3a")
+            else:
+                lbl.config(fg=TEXT_DIM, bg=PANEL_BG)
+    
+    def _update_filter_toggles(self):
+        """Update source list eye icons to show active state."""
+        if not self.filter_manager:
+            return
+        for filt in self.filter_manager.filters:
+            ref = self.filter_toggle_refs.get(filt.name)
+            if ref:
+                if filt.enabled:
+                    ref["eye"].config(fg=ref["color"])
+                    ref["label"].config(fg=Colors.CRT_CYAN)
+                else:
+                    ref["eye"].config(fg=TEXT_DIM)
+                    ref["label"].config(fg=TEXT_BRIGHT)
+    
+    def _test_camera(self):
+        """Test camera and show diagnostic info."""
+        self.terminal_log.log("Running camera diagnostics...", "system")
+        
+        for i in range(3):
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                self.terminal_log.log(f"Camera {i}: {w}x{h} - AVAILABLE", "ok")
+                ret, frame = cap.read()
+                if ret:
+                    self.terminal_log.log(f"Camera {i}: Frame read OK", "ok")
+                else:
+                    self.terminal_log.log(f"Camera {i}: Cannot read frames", "alert")
+            else:
+                self.terminal_log.log(f"Camera {i}: Not available", "warning")
+            cap.release()
+        
+        self.terminal_log.log("Diagnostics complete. Use --camera N to select.", "system")
+    
+    def _toggle_filter(self, name):
+        if self.filter_manager:
+            state = self.filter_manager.toggle_filter(name)
+            status = "ACTIVE" if state else "OFFLINE"
+            color = "ok" if state else "warning"
+            self.terminal_log.log(f"Source '{name}': {status}", color)
+            self._update_filter_toggles()
+    
+    def _reset_filters(self):
+        if self.filter_manager:
+            self.filter_manager.reset()
+            self.terminal_log.log("All sources reset", "system")
+            self._update_filter_toggles()
     
     def _run_basic_gui(self):
         """Fallback basic GUI if themes fail to load."""
@@ -741,32 +916,6 @@ class MaxHeadroomApp:
             self._reset_filters()
         elif key == 'Q':
             self.on_close()
-    
-    def _toggle_filter(self, name):
-        if self.filter_manager:
-            state = self.filter_manager.toggle_filter(name)
-            status = "ACTIVE" if state else "OFFLINE"
-            color = "ok" if state else "warning"
-            self.terminal_log.log(f"Filter '{name}': {status}", color)
-            self._update_filter_buttons()
-    
-    def _reset_filters(self):
-        if self.filter_manager:
-            self.filter_manager.reset()
-            self.terminal_log.log("All filters reset to default", "system")
-            self._update_filter_buttons()
-    
-    def _update_filter_buttons(self):
-        """Update filter button colors to show active state."""
-        if not self.filter_manager:
-            return
-        for filt in self.filter_manager.filters:
-            btn = self.filter_btn_refs.get(filt.name)
-            if btn and hasattr(btn, 'set_color'):
-                if filt.enabled:
-                    btn.set_color(Colors.CRT_CYAN)
-                else:
-                    btn.set_color(Colors.MATRIX_DARK)
     
     def _update_status_indicators(self, tracking_active: bool):
         """Update LED status indicators based on system state."""
