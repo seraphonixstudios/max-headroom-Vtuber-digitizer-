@@ -20,7 +20,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from collections import deque
 
 # Version
-VERSION = "3.0.0"
+VERSION = "3.1.1"
 
 # Check for GUI libraries
 try:
@@ -390,64 +390,210 @@ class MaxHeadroomApp:
         if not GUI_AVAILABLE:
             return self.run_cli()
         
+        # Import themed components
+        try:
+            from gui_themes import (
+                Colors, MatrixRainCanvas, SacredGeometryCanvas, CRTOverlayCanvas,
+                NeonButton, CrystallineFrame, TerminalLog, HUDOverlay,
+                GlitchLabel, CrystalProgressBar, HexDisplay, WaveformCanvas,
+                apply_dark_theme
+            )
+            THEMES_AVAILABLE = True
+        except Exception as e:
+            print(f"[GUI] Themed components not available: {e}")
+            THEMES_AVAILABLE = False
+            return self._run_basic_gui()
+        
         self.root = tk.Tk()
         self.root.title(self.WINDOW_NAME)
-        self.root.geometry("800x700")
-        self.root.configure(bg="black")
+        self.root.geometry("1200x900")
+        self.root.configure(bg=Colors.DEEP_SPACE)
+        apply_dark_theme(self.root)
         
-        # Title
-        title = tk.Label(self.root, text="MAX HEADROOM DIGITIZER", font=("Consolas", 18, "bold"),
-                       fg="#00FF00", bg="black")
-        title.pack(pady=10)
+        # =====================================================================
+        # TOP BAR: Title + Matrix Rain strip
+        # =====================================================================
+        top_frame = tk.Frame(self.root, bg=Colors.DEEP_SPACE)
+        top_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Canvas
-        self.canvas = tk.Canvas(self.root, width=640, height=480, bg="black", highlightthickness=0)
-        self.canvas.pack(pady=5)
+        self.title_label = GlitchLabel(top_frame, text="MAX HEADROOM DIGITIZER v3.1",
+                                       color=Colors.CRT_CYAN, font=("Consolas", 20, "bold"))
+        self.title_label.pack(side=tk.LEFT, padx=10)
         
-        # Controls
-        controls = tk.Frame(self.root, bg="black")
-        controls.pack(pady=10)
+        # Matrix rain strip (small)
+        self.matrix_rain = MatrixRainCanvas(top_frame, width=400, height=40,
+                                           column_spacing=10, font_size=10)
+        self.matrix_rain.pack(side=tk.RIGHT, padx=10)
+        self.matrix_rain.start()
         
-        tk.Label(controls, text="Host:", fg="#00FF00", bg="black").grid(row=0, column=0)
-        self.host_entry = tk.Entry(controls, width=12, fg="#00FF00", bg="#001100")
+        # =====================================================================
+        # MAIN CONTENT: Video (left) + Controls (right)
+        # =====================================================================
+        main_frame = tk.Frame(self.root, bg=Colors.DEEP_SPACE)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # ---- LEFT: Video preview with overlays ----
+        video_frame = tk.Frame(main_frame, bg=Colors.DEEP_SPACE)
+        video_frame.pack(side=tk.LEFT, padx=5)
+        
+        # Video canvas container
+        video_container = tk.Frame(video_frame, bg=Colors.DEEP_SPACE)
+        video_container.pack()
+        
+        self.canvas = tk.Canvas(video_container, width=640, height=480,
+                               bg=Colors.VOID_BLACK, highlightthickness=0)
+        self.canvas.pack()
+        
+        # CRT scanline overlay (on top of video)
+        self.crt_overlay = CRTOverlayCanvas(video_container, width=640, height=480)
+        self.crt_overlay.place(x=0, y=0)
+        self.crt_overlay.start()
+        
+        # HUD overlay (targeting reticle)
+        self.hud_overlay = HUDOverlay(video_container, width=640, height=480)
+        self.hud_overlay.place(x=0, y=0)
+        self.hud_overlay.start()
+        
+        # Video status bar
+        video_status = tk.Frame(video_frame, bg=Colors.DEEP_SPACE)
+        video_status.pack(fill=tk.X, pady=2)
+        
+        self.video_status_label = tk.Label(video_status, text="CAMERA: STANDBY",
+                                          fg=Colors.WARNING, bg=Colors.DEEP_SPACE,
+                                          font=("Consolas", 9, "bold"))
+        self.video_status_label.pack(side=tk.LEFT)
+        
+        self.fps_label = tk.Label(video_status, text="FPS: 0",
+                                 fg=Colors.CRT_CYAN, bg=Colors.DEEP_SPACE,
+                                 font=("Consolas", 9))
+        self.fps_label.pack(side=tk.RIGHT)
+        
+        # Waveform visualizer below video
+        self.waveform = WaveformCanvas(video_frame, bars=32, width=640, height=50,
+                                      color=Colors.CRYSTAL_BLUE)
+        self.waveform.pack(pady=5)
+        self.waveform.start()
+        
+        # ---- RIGHT: Control panels ----
+        right_frame = tk.Frame(main_frame, bg=Colors.DEEP_SPACE)
+        right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
+        
+        # Connection panel
+        conn_panel = CrystallineFrame(right_frame, width=280, height=140,
+                                     title="NETWORK LINK", color=Colors.CRYSTAL_BLUE)
+        conn_panel.pack(pady=5)
+        
+        # Connection controls inside panel
+        conn_inner = tk.Frame(right_frame, bg=Colors.DARK_PANEL)
+        conn_inner.place(in_=conn_panel, x=10, y=30, width=260, height=100)
+        
+        tk.Label(conn_inner, text="HOST:", fg=Colors.CRT_CYAN, bg=Colors.DARK_PANEL,
+                font=("Consolas", 9)).grid(row=0, column=0, sticky="w")
+        self.host_entry = tk.Entry(conn_inner, width=14, fg=Colors.CRT_CYAN,
+                                  bg=Colors.VOID_BLACK, insertbackground=Colors.CRT_CYAN,
+                                  font=("Consolas", 9))
         self.host_entry.insert(0, self.config.ws_host)
-        self.host_entry.grid(row=0, column=1)
+        self.host_entry.grid(row=0, column=1, padx=5)
         
-        tk.Label(controls, text="Port:", fg="#00FF00", bg="black").grid(row=0, column=2)
-        self.port_entry = tk.Entry(controls, width=6, fg="#00FF00", bg="#001100")
+        tk.Label(conn_inner, text="PORT:", fg=Colors.CRT_CYAN, bg=Colors.DARK_PANEL,
+                font=("Consolas", 9)).grid(row=1, column=0, sticky="w")
+        self.port_entry = tk.Entry(conn_inner, width=8, fg=Colors.CRT_CYAN,
+                                  bg=Colors.VOID_BLACK, insertbackground=Colors.CRT_CYAN,
+                                  font=("Consolas", 9))
         self.port_entry.insert(0, str(self.config.ws_port))
-        self.port_entry.grid(row=0, column=3)
+        self.port_entry.grid(row=1, column=1, padx=5, sticky="w")
         
-        tk.Button(controls, text="CONNECT", fg="#00FF00", bg="#001100",
-                 command=self.on_connect).grid(row=0, column=4, padx=10)
+        self.connect_btn = NeonButton(conn_inner, text="LINK", width=80, height=28,
+                                     color=Colors.ATLANTEAN_TEAL,
+                                     command=self.on_connect)
+        self.connect_btn.grid(row=2, column=0, columnspan=2, pady=8)
         
-        # Info
-        self.info_label = tk.Label(self.root, text="Ready", font=("Consolas", 10),
-                                  fg="#00FF00", bg="black")
-        self.info_label.pack(pady=5)
+        self.ws_status_led = tk.Label(conn_inner, text="● OFFLINE", fg=Colors.ALERT,
+                                     bg=Colors.DARK_PANEL, font=("Consolas", 9, "bold"))
+        self.ws_status_led.grid(row=0, column=2, rowspan=3, padx=10)
         
-        # Buttons
-        buttons = tk.Frame(self.root, bg="black")
-        buttons.pack(pady=10)
+        # Filter Control Panel
+        filter_panel = CrystallineFrame(right_frame, width=280, height=260,
+                                       title="FILTER MATRIX", color=Colors.ATLANTEAN_TEAL)
+        filter_panel.pack(pady=5)
         
-        tk.Button(buttons, text="START", font=("Consolas", 12, "bold"), fg="#00FF00", bg="#002200",
-                width=10, command=self.on_start).pack(side=tk.LEFT, padx=10)
-        tk.Button(buttons, text="STOP", font=("Consolas", 12, "bold"), fg="#FF0000", bg="#220000",
-                width=10, command=self.on_stop).pack(side=tk.LEFT, padx=10)
+        filter_inner = tk.Frame(right_frame, bg=Colors.DARK_PANEL)
+        filter_inner.place(in_=filter_panel, x=10, y=30, width=260, height=220)
         
-        # Checkboxes
-        self.test_var = tk.BooleanVar(value=self.config.test_mode)
-        tk.Checkbutton(self.root, text="Test Mode", variable=self.test_var, fg="#00FF00", bg="black",
-                    selectcolor="#003300", command=self.on_toggle_test).pack()
+        # Filter buttons grid
+        filter_buttons = [
+            ("ANDROID", "Max Headroom", Colors.NEON_PINK, Colors.NEON_PURPLE),
+            ("BEAUTY", "Skin Smoothing", Colors.ATLANTEAN_TEAL, Colors.AQUA_GLOW),
+            ("BACKGROUND", "Background", Colors.PLASMA_BLUE, Colors.CRYSTAL_BLUE),
+            ("AR", "AR Overlay", Colors.SACRED_GOLD, Colors.CRT_CYAN),
+            ("MORPH", "Face Morph", Colors.NEON_ORANGE, Colors.WARNING),
+            ("COLOR", "Color Grading", Colors.MATRIX_GREEN, Colors.CRT_GREEN),
+        ]
         
-        # Glitch slider
-        tk.Label(self.root, text="Hologram Intensity:", fg="#00FF00", bg="black").pack()
-        self.glitch_scale = tk.Scale(self.root, from_=0, to=100, orient=tk.HORIZONTAL,
-                                  fg="#00FF00", bg="black", troughcolor="#002200",
-                                  highlightthickness=0,
-                                  command=self.on_glitch_change)
+        self.filter_btn_refs = {}
+        for i, (label, filt_name, color, hover) in enumerate(filter_buttons):
+            row = i // 2
+            col = i % 2
+            btn = NeonButton(filter_inner, text=label, width=110, height=28,
+                           color=color, hover_color=hover,
+                           command=lambda n=filt_name: self._toggle_filter(n))
+            btn.grid(row=row, column=col, padx=4, pady=4)
+            self.filter_btn_refs[filt_name] = btn
+        
+        # Reset button
+        reset_btn = NeonButton(filter_inner, text="RESET ALL", width=110, height=28,
+                              color=Colors.ALERT, hover_color=Colors.WARNING,
+                              command=self._reset_filters)
+        reset_btn.grid(row=3, column=0, padx=4, pady=4)
+        
+        # Intensity slider
+        tk.Label(filter_inner, text="GLITCH INTENSITY:", fg=Colors.CRT_CYAN,
+                bg=Colors.DARK_PANEL, font=("Consolas", 8)).grid(row=3, column=1, sticky="w")
+        self.glitch_scale = tk.Scale(filter_inner, from_=0, to=100, orient=tk.HORIZONTAL,
+                                    fg=Colors.CRT_CYAN, bg=Colors.DARK_PANEL,
+                                    troughcolor=Colors.SCANLINE, highlightthickness=0,
+                                    command=self.on_glitch_change, length=100)
         self.glitch_scale.set(int(self.config.glitch_intensity * 100))
-        self.glitch_scale.pack(pady=5)
+        self.glitch_scale.grid(row=4, column=0, columnspan=2, sticky="ew")
+        
+        # System Panel
+        sys_panel = CrystallineFrame(right_frame, width=280, height=180,
+                                    title="SYSTEM CORE", color=Colors.SACRED_GOLD)
+        sys_panel.pack(pady=5)
+        
+        sys_inner = tk.Frame(right_frame, bg=Colors.DARK_PANEL)
+        sys_inner.place(in_=sys_panel, x=10, y=30, width=260, height=140)
+        
+        # Sacred geometry animation
+        self.sacred_geo = SacredGeometryCanvas(sys_inner, width=100, height=100)
+        self.sacred_geo.pack(side=tk.LEFT, padx=5)
+        self.sacred_geo.start()
+        
+        # Hex display
+        self.hex_display = HexDisplay(sys_inner, rows=5, cols=4, width=130, height=100)
+        self.hex_display.pack(side=tk.RIGHT, padx=5)
+        self.hex_display.start()
+        
+        # Test mode toggle
+        self.test_var = tk.BooleanVar(value=self.config.test_mode)
+        test_cb = tk.Checkbutton(sys_inner, text="SIMULATION MODE", variable=self.test_var,
+                                fg=Colors.MATRIX_GREEN, bg=Colors.DARK_PANEL,
+                                selectcolor=Colors.VOID_BLACK,
+                                command=self.on_toggle_test, font=("Consolas", 8))
+        test_cb.place(x=5, y=110)
+        
+        # =====================================================================
+        # BOTTOM: Terminal Log
+        # =====================================================================
+        bottom_frame = tk.Frame(self.root, bg=Colors.DEEP_SPACE)
+        bottom_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.terminal_log = TerminalLog(bottom_frame, height=6, width=120)
+        self.terminal_log.pack(fill=tk.X)
+        self.terminal_log.log("System initialization sequence started...", "system")
+        self.terminal_log.log("Loading face detection cascade...", "system")
+        self.terminal_log.log("Filter matrix online - 6 filters ready", "ok")
+        self.terminal_log.log("Waiting for user command...", "system")
         
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         
@@ -457,32 +603,73 @@ class MaxHeadroomApp:
         
         self.root.mainloop()
     
+    def _run_basic_gui(self):
+        """Fallback basic GUI if themes fail to load."""
+        self.root = tk.Tk()
+        self.root.title(self.WINDOW_NAME)
+        self.root.geometry("800x700")
+        self.root.configure(bg="black")
+        self.canvas = tk.Canvas(self.root, width=640, height=480, bg="black", highlightthickness=0)
+        self.canvas.pack(pady=5)
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.running = True
+        self._tracking_thread = threading.Thread(target=self._tracking_loop, daemon=True)
+        self._tracking_thread.start()
+        self.root.mainloop()
+    
+    def _toggle_filter(self, name):
+        if self.filter_manager:
+            state = self.filter_manager.toggle_filter(name)
+            status = "ACTIVE" if state else "OFFLINE"
+            color = "ok" if state else "warning"
+            self.terminal_log.log(f"Filter '{name}': {status}", color)
+    
+    def _reset_filters(self):
+        if self.filter_manager:
+            self.filter_manager.reset()
+            self.terminal_log.log("All filters reset to default", "system")
+    
     def on_connect(self):
         self.config.ws_host = self.host_entry.get()
         self.config.ws_port = int(self.port_entry.get())
         self.connect_websocket()
         if self.ws_connected:
-            self.info_label.config(text="WebSocket Connected!")
+            self.ws_status_led.config(text="● ONLINE", fg=Colors.OK)
+            self.terminal_log.log(f"WebSocket linked to {self.config.ws_host}:{self.config.ws_port}", "ok")
         else:
-            self.info_label.config(text="Connection Failed")
+            self.ws_status_led.config(text="● FAILED", fg=Colors.ALERT)
+            self.terminal_log.log("WebSocket connection failed", "alert")
     
     def on_start(self):
         if not self.running:
             self.running = True
-            self.info_label.config(text="Tracking Started")
+            self.terminal_log.log("Tracking sequence initiated", "ok")
     
     def on_stop(self):
         self.running = False
-        self.info_label.config(text="Tracking Stopped")
+        self.terminal_log.log("Tracking sequence halted", "warning")
     
     def on_toggle_test(self):
         self.config.test_mode = self.test_var.get()
+        mode = "SIMULATION" if self.config.test_mode else "LIVE CAMERA"
+        self.terminal_log.log(f"Mode switched: {mode}", "system")
     
     def on_glitch_change(self, value):
         self.config.glitch_intensity = int(value) / 100
     
     def on_close(self):
         self.running = False
+        # Stop animations
+        try:
+            if hasattr(self, 'matrix_rain'): self.matrix_rain.stop()
+            if hasattr(self, 'crt_overlay'): self.crt_overlay.stop()
+            if hasattr(self, 'hud_overlay'): self.hud_overlay.stop()
+            if hasattr(self, 'sacred_geo'): self.sacred_geo.stop()
+            if hasattr(self, 'hex_display'): self.hex_display.stop()
+            if hasattr(self, 'waveform'): self.waveform.stop()
+            if hasattr(self, 'title_label'): self.title_label.destroy()
+        except:
+            pass
         if self.root:
             self.root.destroy()
     
@@ -496,7 +683,10 @@ class MaxHeadroomApp:
             
             if self.config.test_mode:
                 frame = np.zeros((480, 640, 3), np.uint8)
-                cv2.rectangle(frame, (50, 50), (590, 430), (0, 150, 0), 3)
+                # Draw test pattern
+                cv2.rectangle(frame, (50, 50), (590, 430), (0, 150, 0), 2)
+                cv2.putText(frame, "SIMULATION MODE", (220, 250),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             else:
                 if self.cap:
                     ret, frame = self.cap.read()
@@ -532,15 +722,41 @@ class MaxHeadroomApp:
             if self.ws_connected:
                 self.send_websocket(payload)
             
+            # Update video canvas with thread safety
             if self.canvas and frame is not None:
                 try:
                     from PIL import Image, ImageTk
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    # Resize if needed
+                    if frame_rgb.shape[1] != 640 or frame_rgb.shape[0] != 480:
+                        frame_rgb = cv2.resize(frame_rgb, (640, 480))
                     pil_img = Image.fromarray(frame_rgb)
                     photo = ImageTk.PhotoImage(pil_img)
-                    self.canvas.delete("all")
-                    self.canvas.create_image(0, 0, anchor=tk.NW, image=photo)
-                except:
+                    
+                    # Use after() for thread-safe GUI update
+                    def update_image(p=photo):
+                        self.canvas.delete("all")
+                        self.canvas.create_image(0, 0, anchor=tk.NW, image=p)
+                        self.canvas.image = p  # Keep reference
+                    
+                    if hasattr(self, 'root') and self.root:
+                        self.root.after(0, update_image)
+                    
+                    # Update HUD target position based on face
+                    face_rect = None
+                    if not self.config.test_mode and self.cap:
+                        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+                        if hasattr(self, 'detector') and self.detector:
+                            face_rect = self.detector.detect(gray)
+                    
+                    if face_rect:
+                        fx, fy, fw, fh = face_rect
+                        hud_x = int((fx + fw / 2) / frame.shape[1] * 640)
+                        hud_y = int((fy + fh / 2) / frame.shape[0] * 480)
+                        if hasattr(self, 'hud_overlay'):
+                            self.hud_overlay.set_target(hud_x, hud_y)
+                    
+                except Exception as e:
                     pass
             
             self.fps_counter += 1
@@ -548,7 +764,15 @@ class MaxHeadroomApp:
                 self.fps = self.fps_counter
                 self.fps_counter = 0
                 self.last_fps_time = time.time()
+                
+                # Update FPS label thread-safely
+                if hasattr(self, 'fps_label') and self.fps_label:
+                    def update_fps(f=self.fps):
+                        self.fps_label.config(text=f"FPS: {f}")
+                    if hasattr(self, 'root') and self.root:
+                        self.root.after(0, update_fps)
             
+            self.frame_count += 1
             time.sleep(1 / self.config.target_fps)
     
     def run_cli(self):

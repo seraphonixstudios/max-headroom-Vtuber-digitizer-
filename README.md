@@ -24,6 +24,7 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 | **Face Morph** | Face slimming, eye enlarging, jaw shaping |
 | **Color Grading** | 6 LUT presets + vignette + contrast |
 | **Eye Glow** | Anime lens flare / sharingan terminator effect |
+| **Themed GUI** | Sci-Fi / Matrix / Atlantean crystalline interface |
 | **Config System** | JSON-based configuration with dot-notation access |
 | **Pipeline v3.1** | MediaPipe primary, 3D pose, Kalman smoothing |
 | **Logging** | Centralized colored console + rotating file output |
@@ -43,6 +44,7 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 | **CRT Effects** | Digital entity visual overlay |
 | **Android Mode** | Max Headroom styled character filter |
 | **Filters** | Beauty, background, AR, morph, color, android (v3.1) |
+| **Themed GUI** | Matrix rain, sacred geometry, CRT, crystalline HUD |
 
 ## Architecture
 
@@ -93,6 +95,74 @@ python tracker.py --test --eye-glow
 | `M` | Toggle face morph |
 | `C` | Toggle color grading |
 | `R` | Reset all filters |
+
+---
+
+## Themed Desktop GUI
+
+Launch the fully themed desktop interface:
+```bash
+python max_headroom.py --gui
+# or
+python launch.py --tracker --gui
+```
+
+### Visual Themes
+
+The GUI fuses four visual styles into one cohesive interface:
+
+| Theme | Elements | Colors |
+|-------|----------|--------|
+| **Matrix** | Falling code rain, terminal log, green data streams | `#00FF41` |
+| **Max Headroom** | CRT scanlines, glitch text, cyan accents | `#00FFFF` |
+| **Atlantean** | Sacred geometry, crystal hexagons, rotating patterns | `#00E5FF` |
+| **Sci-Fi HUD** | Targeting reticle, data rings, waveform visualizer | `#BF00FF` |
+
+### Interface Layout
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  [GLITCH TITLE]                    [MATRIX RAIN ANIMATION]          │
+├──────────────────────────┬──────────────────────────────────────────┤
+│                          │  ◆ NETWORK LINK                          │
+│   [VIDEO PREVIEW]        │  Host: localhost  Port: 30000  [LINK]   │
+│   + CRT scanline overlay │  ● ONLINE                                │
+│   + HUD crosshair        │                                          │
+│   + targeting reticle    │  ◆ FILTER MATRIX                         │
+│                          │  [ANDROID] [BEAUTY] [BACKGROUND]         │
+│   [WAVEFORM VISUALIZER]  │  [AR]      [MORPH]  [COLOR]            │
+│                          │  [RESET ALL]  Glitch: [====|====]       │
+│                          │                                          │
+│                          │  ◆ SYSTEM CORE                           │
+│                          │  [SACRED GEO]   [HEX DUMP]              │
+│                          │  [x] SIMULATION MODE                     │
+├──────────────────────────┴──────────────────────────────────────────┤
+│  [00:00:00] System initialization sequence started...               │
+│  [00:00:01] Loading face detection cascade...                       │
+│  [00:00:01] Filter matrix online - 6 filters ready                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Animated Elements (Real tkinter Canvas Animation)
+
+- **Matrix Rain** — Japanese characters + hex falling in columns, 25 FPS
+- **Sacred Geometry** — Rotating flower of life, Metatron's cube, crystal hexagon
+- **CRT Overlay** — Horizontal scanlines with random flicker bands
+- **HUD Overlay** — Animated targeting reticle, rotating data ring, pulse dot
+- **Waveform** — Perlin-noise style bars, 20 FPS
+- **Hex Display** — Live-updating memory dump, 6+ Hz
+- **Glitch Label** — Title occasionally corrupts characters and shifts color
+
+### GUI Filter Controls
+
+Click the neon buttons in the **FILTER MATRIX** panel:
+- **ANDROID** — Max Headroom character filter
+- **BEAUTY** — Skin smoothing
+- **BACKGROUND** — Virtual background
+- **AR** — Stickers & overlays
+- **MORPH** — Face mesh deformation
+- **COLOR** — LUT color grading
+- **RESET ALL** — Disable all filters
 
 ---
 
@@ -461,6 +531,8 @@ filter/
 ├── blender_export.py      # Blender export
 ├── vts_export.py         # VTS export
 ├── gpu_accel.py          # GPU acceleration
+├── gui_themes.py         # Sci-Fi / Matrix / Atlantean GUI components
+├── max_headroom.py       # Desktop application with themed GUI
 ├── filters/              # Filter system
 │   ├── __init__.py
 │   ├── base.py
