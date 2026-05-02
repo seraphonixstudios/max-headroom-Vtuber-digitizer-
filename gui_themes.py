@@ -602,8 +602,9 @@ class GlitchLabel(tk.Label):
     GLITCH_CHARS = "@#$%&*!?<>[]{}|~"
     
     def __init__(self, parent, text="", color=Colors.CRT_CYAN, **kwargs):
+        font = kwargs.pop("font", ("Consolas", 12, "bold"))
         super().__init__(parent, text=text, fg=color, bg=Colors.DARK_PANEL,
-                        font=("Consolas", 12, "bold"), **kwargs)
+                        font=font, **kwargs)
         self._original_text = text
         self._color = color
         self._glitching = False
