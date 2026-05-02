@@ -37,13 +37,21 @@ class SkinSmoothingFilter(Filter):
         # Create skin mask using HSV color space
         skin_mask = self._create_skin_mask(frame)
         
-        # Apply bilateral filter for smoothing
+        # Apply bilateral filter for smoothing (SOTA: edge-preserving)
         smoothed = cv2.bilateralFilter(
             frame,
             self.params["bilateral_d"],
             self.params["bilateral_sigma_color"],
             self.params["bilateral_sigma_space"]
         )
+        
+        # SOTA: Try guided filter for better edge preservation (if available)
+        try:
+            from .graphics_engine import GuidedFilter
+            if strength > 0.4:
+                smoothed = GuidedFilter.apply(frame, smoothed, radius=8, epsilon=0.01)
+        except ImportError:
+            pass
         
         # Additional smoothing using pyramid
         if strength > 0.3:
@@ -53,14 +61,30 @@ class SkinSmoothingFilter(Filter):
         if context and self.params.get("preserve_eyes", True):
             smoothed = self._preserve_features(smoothed, frame, context)
         
-        # Blend original and smoothed based on skin mask and strength
-        mask_3ch = np.stack([skin_mask] * 3, axis=-1)
-        alpha = mask_3ch * strength
-        result = (smoothed * alpha + frame * (1 - alpha)).astype(np.uint8)
+        # SOTA: Blend using gamma-correct alpha compositing
+        try:
+            from .graphics_engine import AlphaCompositor
+            mask_3ch = np.stack([skin_mask] * 3, axis=-1)
+            alpha = mask_3ch * strength
+            result = AlphaCompositor.composite(frame, smoothed, alpha)
+        except ImportError:
+            # Fallback to linear blend
+            mask_3ch = np.stack([skin_mask] * 3, axis=-1)
+            alpha = mask_3ch * strength
+            result = (smoothed * alpha + frame * (1 - alpha)).astype(np.uint8)
         
-        # Subtle sharpening
+        # Subtle sharpening with unsharp mask
         if self.params.get("sharpen_edges", 0) > 0:
             result = self._subtle_sharpen(result, self.params["sharpen_edges"])
+        
+        # SOTA: Apply CLAHE to luminance for glow effect
+        if strength > 0.5:
+            try:
+                from .graphics_engine import CLAHEEnhancer
+                clahe = CLAHEEnhancer(clip_limit=1.5, tile_size=(8, 8))
+                result = clahe.apply(result)
+            except ImportError:
+                pass
         
         return result
     

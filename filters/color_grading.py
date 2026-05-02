@@ -148,25 +148,36 @@ class ColorGradingFilter(Filter):
         return lut
     
     def _adjust_contrast_brightness(self, frame: np.ndarray) -> np.ndarray:
-        """Adjust contrast and brightness."""
+        """Adjust contrast and brightness in Lab space for perceptual correctness."""
         alpha = self.params["contrast"]
         beta = self.params["brightness"]
+        
+        # For high contrast adjustments, use Lab L channel
+        if abs(alpha - 1.0) > 0.3 or abs(beta) > 20:
+            lab = cv2.cvtColor(frame, cv2.COLOR_BGR2Lab)
+            l, a, b = cv2.split(lab)
+            l = cv2.convertScaleAbs(l, alpha=alpha, beta=beta)
+            lab = cv2.merge([l, a, b])
+            return cv2.cvtColor(lab, cv2.COLOR_Lab2BGR)
+        
         return cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
     
     def _adjust_saturation(self, frame: np.ndarray) -> np.ndarray:
-        """Adjust saturation."""
+        """Adjust saturation in HSV space."""
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV).astype(np.float32)
         hsv[:, :, 1] = np.clip(hsv[:, :, 1] * self.params["saturation"], 0, 255)
         return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
     
     def _apply_tint(self, frame: np.ndarray) -> np.ndarray:
-        """Apply RGB tint."""
+        """Apply RGB tint with gamma correction."""
         tint = np.array(self.params["tint"], dtype=np.float32)
-        tinted = frame.astype(np.float32) + tint
-        return np.clip(tinted, 0, 255).astype(np.uint8)
+        # Apply in linear light for perceptual correctness
+        linear = np.power(frame.astype(np.float32) / 255.0, 2.2)
+        tinted = linear + (tint / 255.0)
+        return np.clip(np.power(tinted, 1.0 / 2.2) * 255, 0, 255).astype(np.uint8)
     
     def _apply_vignette(self, frame: np.ndarray) -> np.ndarray:
-        """Apply vignette effect."""
+        """Apply vignette effect with proper gamma-correct darkening."""
         h, w = frame.shape[:2]
         strength = self.params["vignette"]
         
@@ -180,7 +191,10 @@ class ColorGradingFilter(Filter):
         mask = 1 - (1 - mask) * strength
         mask = np.dstack([mask] * 3)
         
-        return (frame.astype(np.float32) * mask).astype(np.uint8)
+        # Apply in linear light
+        linear = np.power(frame.astype(np.float32) / 255.0, 2.2)
+        result = linear * mask
+        return np.clip(np.power(result, 1.0 / 2.2) * 255, 0, 255).astype(np.uint8)
     
     def set_preset(self, preset: str):
         """Set color preset."""
