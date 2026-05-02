@@ -250,21 +250,43 @@ class MaxHeadroomApp:
         return True
     
     def _open_camera(self):
-        """Open camera with retry logic."""
+        """Open camera with non-blocking timeout to prevent GUI freeze."""
+        import concurrent.futures
         print(f"[Init] Opening camera {self.config.camera_index}...")
-        self.cap = cv2.VideoCapture(self.config.camera_index)
         
-        if not self.cap.isOpened():
-            print("[Init] Camera unavailable - using TEST MODE")
-            self.config.test_mode = True
-            self._camera_fail_count += 1
-        else:
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.resolution_w)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.resolution_h)
+        def _try_open(idx):
+            cap = cv2.VideoCapture(idx)
+            if cap.isOpened():
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.resolution_w)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.resolution_h)
+                # Test read to ensure it's really working
+                ret, _ = cap.read()
+                if ret:
+                    return cap
+                cap.release()
+            return None
+        
+        cap = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_try_open, self.config.camera_index)
+            try:
+                cap = future.result(timeout=3.0)
+            except concurrent.futures.TimeoutError:
+                print("[Init] Camera open timed out (3s) - another app may be using it")
+        
+        if cap is not None:
+            self.cap = cap
             actual_w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
             actual_h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
             print(f"[Init] Camera: {int(actual_w)}x{int(actual_h)}")
             self._camera_fail_count = 0
+        else:
+            print("[Init] Camera unavailable - using TEST MODE")
+            self.config.test_mode = True
+            self._camera_fail_count += 1
+            if self.cap:
+                self.cap.release()
+                self.cap = None
     
     def connect_websocket(self) -> bool:
         if not self.config.enable_websocket or not websocket:
