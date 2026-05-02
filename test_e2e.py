@@ -247,15 +247,14 @@ def test_e2e():
     # ===========================================
     check("App has frame queue for thread safety", hasattr(app, '_frame_queue'))
     check("App has UI lock", hasattr(app, '_ui_lock'))
-    check("App has camera recovery vars", hasattr(app, '_camera_fail_count'))
-    check("App has WS reconnect vars", hasattr(app, 'ws_reconnect_attempts'))
-    check("App has _schedule_ui_update method", hasattr(app, '_schedule_ui_update'))
-    check("App has _update_blendshape_bars method", hasattr(app, '_update_blendshape_bars'))
-    check("App has _update_pose_labels method", hasattr(app, '_update_pose_labels'))
-    check("App has _update_status_indicators method", hasattr(app, '_update_status_indicators'))
+    check("App has CameraManager", hasattr(app, 'cam_mgr'))
+    check("App has _schedule_ui method", hasattr(app, '_schedule_ui'))
     check("App has _update_filter_toggles method", hasattr(app, '_update_filter_toggles'))
+    check("App has _update_status method", hasattr(app, '_update_status'))
     check("App has _try_log method", hasattr(app, '_try_log'))
-    check("App version is 3.2.0", app.__class__.__module__ == 'max_headroom')
+    check("App has _activate_scene method", hasattr(app, '_activate_scene'))
+    check("App has _test_camera method", hasattr(app, '_test_camera'))
+    check("App version matches module", app.__class__.__module__ == 'max_headroom')
     
     # Test BlendShapeCalculator produces expected shapes
     calc = app.blendshape_calc
