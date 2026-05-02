@@ -1,4 +1,4 @@
-# Max Headroom Digitizer v3.2
+# Max Headroom Digitizer v3.3
 
 Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, webcam face capture, WebSocket streaming, OBS integration, and multi-platform export.
 
@@ -9,8 +9,22 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 | |  | | (_| | |  __/ |_| | | |  __/ |  | |_| | |  __/ (_| |
 |_|  |_|\__,_|_|\___|\__|_| |_|\___|_|   \__|_|  \___|\__, |
                                                       |___/
-                Digital Entity VTuber System v3.2
+                Digital Entity VTuber System v3.3
 ```
+
+## What's New in v3.3
+
+| Feature | Description |
+|---------|-------------|
+| **CameraManager** | Professional camera handling with discovery, hot-swap, 3s timeout |
+| **FrameBus Architecture** | Producer-consumer pipeline with clean stage separation |
+| **OBS-Style UI** | Dark broadcast studio interface with docked panels |
+| **Scene Presets** | One-click filter combos: Default, Android, Beauty, Color |
+| **Source Toggles** | Eye-icon filter list with color-coded abbreviations |
+| **Camera Diagnostics** | TEST CAM button scans all cameras and reports status |
+| **Rate-Limited Logging** | Prevents console spam with 0.1s throttle |
+| **Cleaner Codebase** | ~700 lines vs ~1300, removed dead code, consistent naming |
+| **Graceful Degradation** | Face detector failure auto-switches to test mode |
 
 ## What's New in v3.2
 
@@ -521,7 +535,7 @@ python test_v31.py
 # Filter system tests (37 tests)
 python test_filters.py
 
-# End-to-end integration tests (39 tests)
+# End-to-end integration tests (38 tests)
 python test_e2e.py
 
 # SOTA graphics engine tests (34 tests)
@@ -540,9 +554,9 @@ python launch.py --quick-test
 | v3.0 Core | 24 | ✅ Pass |
 | v3.1 Pipeline | 16 | ✅ Pass |
 | Filter System | 37 | ✅ Pass |
-| End-to-End | 39 | ✅ Pass |
+| End-to-End | 38 | ✅ Pass |
 | SOTA Graphics | 34 | ✅ Pass |
-| **Total** | **150** | **✅ 100%** |
+| **Total** | **149** | **✅ 100%** |
 
 ---
 
@@ -637,6 +651,8 @@ filter/
 ├── gpu_accel.py          # GPU acceleration
 ├── gui_themes.py         # Sci-Fi / Matrix / Atlantean GUI components
 ├── max_headroom.py       # Desktop application with themed GUI
+├── camera_manager.py     # Professional camera handling
+├── pipeline_v2.py        # FrameBus producer-consumer architecture
 ├── test_graphics.py      # SOTA graphics engine tests
 ├── filters/              # Filter system
 │   ├── __init__.py
