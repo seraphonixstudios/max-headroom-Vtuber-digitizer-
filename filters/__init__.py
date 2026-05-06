@@ -6,6 +6,7 @@ from .base import Filter, FilterMode
 from .manager import FilterManager
 from .skin_smoothing import SkinSmoothingFilter
 from .background import BackgroundFilter
+from .background_removal import BackgroundRemovalFilter
 from .ar_overlay import AROverlayFilter
 from .face_morph import FaceMorphFilter
 from .color_grading import ColorGradingFilter
@@ -13,7 +14,7 @@ from .max_headroom_filter import MaxHeadroomFilter
 
 __all__ = [
     'Filter', 'FilterMode', 'FilterManager',
-    'SkinSmoothingFilter', 'BackgroundFilter',
+    'SkinSmoothingFilter', 'BackgroundFilter', 'BackgroundRemovalFilter',
     'AROverlayFilter', 'FaceMorphFilter', 'ColorGradingFilter',
     'MaxHeadroomFilter'
 ]

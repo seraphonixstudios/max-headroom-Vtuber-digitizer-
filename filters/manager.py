@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 
 from .base import Filter, FilterContext
 from .skin_smoothing import SkinSmoothingFilter
-from .background import BackgroundFilter
+from .background_removal import BackgroundRemovalFilter
 from .ar_overlay import AROverlayFilter
 from .face_morph import FaceMorphFilter
 from .color_grading import ColorGradingFilter
@@ -45,7 +45,7 @@ class FilterManager:
         self.filters.append(ColorGradingFilter())       # 5
         self.filters.append(SkinSmoothingFilter())      # 10
         self.filters.append(FaceMorphFilter())          # 15
-        self.filters.append(BackgroundFilter())         # 20
+        self.filters.append(BackgroundRemovalFilter())  # 20
         self.filters.append(AROverlayFilter())          # 30
         
         LOG.info("Initialized %d filters", len(self.filters))

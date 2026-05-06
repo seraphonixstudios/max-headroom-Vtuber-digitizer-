@@ -254,6 +254,9 @@ def test_e2e():
     check("App has _try_log method", hasattr(app, '_try_log'))
     check("App has _activate_scene method", hasattr(app, '_activate_scene'))
     check("App has _test_camera method", hasattr(app, '_test_camera'))
+    check("App has bg_mode_var", hasattr(app, 'bg_mode_var'))
+    check("App has cam_var", hasattr(app, 'cam_var'))
+    check("App has quality_scale", hasattr(app, 'quality_scale'))
     check("App version matches module", app.__class__.__module__ == 'max_headroom')
     
     # Test BlendShapeCalculator produces expected shapes
