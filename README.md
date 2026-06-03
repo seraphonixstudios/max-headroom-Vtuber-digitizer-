@@ -1,6 +1,6 @@
-# Max Headroom Digitizer v3.3
+# Max Headroom Digitizer v3.4
 
-Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, webcam face capture, WebSocket streaming, OBS integration, and multi-platform export.
+Real-time VTuber digitization system with **cinematic rendered graphics, motion-capture overlays, and Snapchat/WhatsApp-level filters** — webcam face capture, WebSocket streaming, OBS integration, and multi-platform export.
 
 ```
  __  __       _      _   _               _                  
@@ -8,9 +8,28 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 | |\/| |/ _` | |/ _ \ __| '_ \ / _ \ '__| __| '__/ _ \/ _` |
 | |  | | (_| | |  __/ |_| | | |  __/ |  | |_| | |  __/ (_| |
 |_|  |_|\__,_|_|\___|\__|_| |_|\___|_|   \__|_|  \___|\__, |
-                                                      |___/
-                Digital Entity VTuber System v3.3
+                                                       |___/
+       Digital Entity VTuber System v3.4 — Render Quality
 ```
+
+## What's New in v3.4
+
+| Feature | Description |
+|---------|-------------|
+| **Cel-Shading** | 3 toon rendering modes: Canny outlines, Sobel edges, comic-book halftone |
+| **Bloom/Glow** | Threshold-based bloom + neon edge glow with configurable tint |
+| **Stylized Edges** | Ink-style DoG edges and colored neon outlines |
+| **MoCap Viz Filter** | Face wireframe mesh, tracking points, head pose axes, skeleton, labels |
+| **AR Wireframe Sticker** | Face mesh wireframe overlay as an AR sticker |
+| **AR Tracking Dots** | Glowing tracking point markers as an AR sticker |
+| **7-Filter Pipeline** | New MoCap Viz filter (priority 35) fully integrated |
+| **Per-Filter Intensity Sliders** | Individual intensity sliders (0-100%) for each filter |
+| **Filter Reorder UI** | ▲/▼ buttons to change filter pipeline order |
+| **Color Presets Tab** | One-click color presets: None, Warm, Cool, Cyberpunk, Vintage, Noir, Matrix |
+| **Tabbed Sidebar** | Five-tab Notebook: Camera, Filters, Color, Network, Mixer |
+| **Waveform Panel** | Animated Perlin-noise waveform replacing old System panel |
+| **Dev Console** | Live camera index, resolution, frame time, pipeline status, errors |
+| **204 Tests** | Full coverage for all filters, graphics engine, MoCap, and integration |
 
 ## What's New in v3.3
 
@@ -23,7 +42,6 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 | **Source Toggles** | Eye-icon filter list with color-coded abbreviations |
 | **Camera Diagnostics** | TEST CAM button scans all cameras and reports status |
 | **Rate-Limited Logging** | Prevents console spam with 0.1s throttle |
-| **Cleaner Codebase** | ~700 lines vs ~1300, removed dead code, consistent naming |
 | **Graceful Degradation** | Face detector failure auto-switches to test mode |
 
 ## What's New in v3.2
@@ -41,28 +59,16 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 | **Performance HUD** | Live FPS, packet count, and frame processing time display |
 | **Shortcut Legend** | Visual hotkey reference in bottom status bar |
 
-## What's New in v3.1
-
-| Feature | Description |
-|---------|-------------|
-| **Filter System** | 6 Snapchat/WhatsApp-level real-time filters |
-| **Max Headroom** | Android/digital character transformation filter |
-| **Skin Smoothing** | Bilateral beauty filter with edge preservation |
-| **Background** | Blur, color, or image replacement |
-| **AR Overlays** | Glasses, hats, crowns, mustache, tears, blush |
-| **Face Morph** | Face slimming, eye enlarging, jaw shaping |
-| **Color Grading** | 6 LUT presets + vignette + contrast |
-| **Eye Glow** | Anime lens flare / sharingan terminator effect |
-| **Themed GUI** | Sci-Fi / Matrix / Atlantean crystalline interface |
-| **Config System** | JSON-based configuration with dot-notation access |
-| **Pipeline v3.1** | MediaPipe primary, 3D pose, Kalman smoothing |
-| **Logging** | Centralized colored console + rotating file output |
-
 ## Features
 
 | Feature | Description |
 |---------|-------------|
-| **51 Blendshapes** | ARKit-compatible facial expressions (v3.1) |
+| **51 Blendshapes** | ARKit-compatible facial expressions |
+| **7 Real-Time Filters** | Full pipeline with priority ordering |
+| **Cel-Shading** | Canny/Sobel edge outlines + k-means color quantization |
+| **Bloom/Glow** | Real-time threshold bloom with configurable tint |
+| **MoCap Overlays** | Wireframe mesh, tracking points, pose axes, skeleton, labels |
+| **AR Stickers** | Glasses, hats, crowns + wireframe mesh + tracking dots |
 | **MediaPipe** | 468-point face mesh (optional) |
 | **WebSocket** | Multi-client real-time streaming |
 | **OBS** | Scene switching & filter control |
@@ -70,11 +76,8 @@ Real-time VTuber digitization system with **Snapchat/WhatsApp-level filters**, w
 | **Blender** | Live bone/shape export |
 | **VTS** | VTuber Studio API integration |
 | **GPU** | CUDA/OpenCL acceleration |
-| **CRT Effects** | Digital entity visual overlay |
+| **CRT Effects** | Scanlines, phosphor triads, interlace flicker |
 | **Android Mode** | Max Headroom styled character filter |
-| **Filters** | Beauty, background, AR, morph, color, android (v3.1) |
-| **Themed GUI** | Matrix rain, sacred geometry, CRT, crystalline HUD |
-| **SOTA Graphics** | CLAHE, k-means, pyramid blending, guided filter, gamma compositing |
 
 ## Architecture
 
@@ -148,59 +151,95 @@ The GUI fuses four visual styles into one cohesive interface:
 | **Atlantean** | Sacred geometry, crystal hexagons, rotating patterns | `#00E5FF` |
 | **Sci-Fi HUD** | Targeting reticle, data rings, waveform visualizer | `#BF00FF` |
 
-### Interface Layout
+### Interface Layout (v3.4)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  [GLITCH TITLE]                    [MATRIX RAIN ANIMATION]          │
-├──────────────────────────┬──────────────────────────────────────────┤
-│                          │  ◆ NETWORK LINK                          │
-│   [VIDEO PREVIEW]        │  Host: localhost  Port: 30000  [LINK]   │
-│   + CRT scanline overlay │  ● ONLINE                                │
-│   + HUD crosshair        │                                          │
-│   + targeting reticle    │  ◆ FILTER MATRIX                         │
-│                          │  [ANDROID] [BEAUTY] [BACKGROUND]         │
-│   [WAVEFORM VISUALIZER]  │  [AR]      [MORPH]  [COLOR]            │
-│                          │  [RESET ALL]  Glitch: [====|====]       │
-│                          │                                          │
-│                          │  ◆ SYSTEM CORE                           │
-│                          │  [SACRED GEO]   [HEX DUMP]              │
-│                          │  [x] SIMULATION MODE                     │
-├──────────────────────────┴──────────────────────────────────────────┤
-│  [00:00:00] System initialization sequence started...               │
-│  [00:00:01] Loading face detection cascade...                       │
-│  [00:00:01] Filter matrix online - 6 filters ready                  │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  [GLITCH TITLE]                              [MATRIX RAIN ANIMATION] │
+├───────────────────────────────┬──────────────────────────────────────┤
+│                               │  ┌─ TABBED SIDEBAR ───────────────┐ │
+│    [VIDEO PREVIEW]            │  │ ▸ CAMERA   FILTERS  COLOR      │ │
+│    + CRT scanline (drawn)     │  │   NETWORK  MIXER               │ │
+│    + HUD reticle (drawn)      │  ├────────────────────────────────┤ │
+│                               │  │ ⬤ MH   Max Headroom   ▲ ▼  │ │
+│                               │  │ ⬤ SKIN Skin Smoothing ▲ ▼  │ │
+│                               │  │ ⬤ CLR  Color Grading  ▲ ▼  │ │
+│                               │  │ ⬤ MORPH Face Morph    ▲ ▼  │ │
+│                               │  │ ⬤ BG   Background     ▲ ▼  │ │
+│                               │  │ ⬤ AR   AR Overlay     ▲ ▼  │ │
+│                               │  │ ⬤ MOCAP MoCap Viz     ▲ ▼  │ │
+│                               │  │   [████████████░░░] 50%     │ │
+│                               │  │ Global: [████|████]  Glitch │ │
+│                               │  └────────────────────────────────┘ │
+├───────────┬───────────┬───────┴────────────────────────────────────┤
+│ HEAD POSE │ WAVEFORM  │  CONSOLE           │ DEV                  │
+│ ROT 0 0 0 │ [== ██==] │  System online     │ Cam:0 Size:640x480   │
+│ POS 0 0 0 │ [==██ ██] │  Filters ready     │ Pipe:active 19ms    │
+├───────────┴───────────┴────────────────────┴──────────────────────┤
+│ CAMERA: STANDBY              FPS: 0    PKT: 0                     │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Animated Elements (Real tkinter Canvas Animation)
 
 - **Matrix Rain** — Japanese characters + hex falling in columns, 25 FPS
-- **Sacred Geometry** — Rotating flower of life, Metatron's cube, crystal hexagon
-- **CRT Overlay** — Horizontal scanlines with random flicker bands
-- **HUD Overlay** — Animated targeting reticle, rotating data ring, pulse dot
-- **Waveform** — Perlin-noise style bars, 20 FPS
-- **Hex Display** — Live-updating memory dump, 6+ Hz
+- **Sacred Geometry** — Rotating flower of life, Metatron's cube, crystal hexagon (in Mixer tab)
+- **CRT Scanlines** — Drawn directly on video canvas for proper compositing
+- **HUD Reticle** — Animated targeting reticle, data ring, pulse dot drawn on video
+- **Waveform** — Perlin-noise style bars in bottom panel (20 FPS)
+- **Hex Display** — Live-updating memory dump in Mixer tab
 - **Glitch Label** — Title occasionally corrupts characters and shifts color
+- **Blendshape Bars** — Real-time bar chart of top 12 blendshapes (in Mixer tab)
 
-### GUI Filter Controls
+### GUI Filter Controls (v3.4)
 
-Click the neon buttons in the **FILTER MATRIX** panel:
-- **ANDROID** — Max Headroom character filter
-- **BEAUTY** — Skin smoothing
-- **BACKGROUND** — Virtual background
-- **AR** — Stickers & overlays
-- **MORPH** — Face mesh deformation
-- **COLOR** — LUT color grading
-- **RESET ALL** — Disable all filters
+The **Filters** tab in the Notebook sidebar provides per-filter controls:
+- **Eye Toggle** (⬤) — Enable/disable individual filters
+- **▲ ▼** — Reorder filter priority in the pipeline
+- **Intensity Slider** (0-100%) — Per-filter intensity with live percentage readout
+- **Global Quality** — Low/Medium/High quality preset for all filters
+- **Glitch Intensity** — Global glitch effect amount
+
+Additional tabs:
+- **Camera** — Device dropdown, SCAN/REFRESH, resolution/FPS info
+- **Color** — Instant color preset swatches (None, Warm, Cool, Cyberpunk, Vintage, Noir, Matrix)
+- **Network** — WebSocket host/port, CONNECT, Simulation Mode
+- **Mixer** — Blendshape bars + Sacred Geometry + Hex dump VU meters
+
+Hotkeys: D (Android), B (Beauty), C (Color), G (Background), A (AR), M (Morph), R (Reset), Q (Quit)
 
 ---
 
-## Filter System (v3.1)
+## Filter System (v3.4)
 
-### Snapchat/WhatsApp-Level Filters
+### 7 Professional Real-Time Filters
 
-Real-time filters applied to the video stream with **zero placeholders** - all fully working.
+All filters applied in priority order through the pipeline. Each has per-filter intensity control and individual enable/disable.
+
+#### 0. MoCap Viz (NEW in v3.4)
+```bash
+# Toggle: MoCap Viz filter in Filters tab
+```
+Motion capture visualization overlay — transforms your video feed into a professional mocap studio view.
+
+**Features:**
+- **Face Wireframe** — Delaunay-like tesselation mesh with contour highlights
+- **Tracking Points** — Glowing dots on key landmarks (eyes, nose, mouth, chin)
+- **Head Pose Axes** — RGB XYZ rotation arrows from nose, using full rotation matrix
+- **Skeleton** — Face skeleton edges (jaw, brow, eye, nose, mouth connectivity)
+- **Landmark Labels** — NOSE, L_EYE, R_EYE, CHIN, etc.
+- **4 Style Presets** — `tech` (cyan), `neon` (magenta), `dark` (subdued), `minimal` (light)
+- **Per-Feature Toggle** — Each visualization layer independently toggleable
+
+```python
+from filters import FilterManager
+mgr = FilterManager()
+mgr.enable_filter("MoCap Viz")
+mgr.set_filter_param("MoCap Viz", "wireframe", True)
+mgr.set_filter_param("MoCap Viz", "tracking_points", True)
+mgr.set_filter_param("MoCap Viz", "pose_axes", True)
+mgr.set_filter_param("MoCap Viz", "style", "neon")
+```
 
 #### 1. Skin Smoothing (Beauty Filter)
 ```bash
@@ -237,6 +276,8 @@ Available stickers (anchored to facial landmarks):
 - **Mustache**: Handlebar style
 - **Blush**: Pink cheek circles
 - **Tears**: Anime tear drops under eyes
+- **Wireframe** (v3.4): Face mesh wireframe with tesselation + contour lines
+- **Tracking Dots** (v3.4): Glowing tracking points with halo rings
 
 Add stickers programmatically:
 ```python
@@ -314,6 +355,30 @@ Transforms you into a **Max Headroom styled android/digital character** with the
 - **Interlace Flicker** — Alternating field dimming
 - **Temporal Smoothing** — Exponential moving average for frame coherence
 
+**v3.4 Digital Graphics Modes:**
+- **Cel-Shading** — Canny or Sobel edge outlines + k-means flat color quantization (configurable k=2-16)
+- **Bloom/Glow** — Threshold-based glow on bright areas with optional tint (e.g. cyan bloom)
+- **Comic Style** — Comic-book aesthetic: quantized colors + halftone dots + bold outlines
+- **Neon Edges** — Colored edge outlines in any RGB color (e.g. magenta neon)
+- **Ink Edges** — Difference-of-Gaussians dark ink outlines
+- **Presentation Mode** — One-switch look: `crt`, `cel`, `bloom`, `comic`, `neon`, or `clean`
+
+```python
+# Enable cel-shading
+mgr.set_filter_param("Max Headroom", "cel_shading", True)
+mgr.set_filter_param("Max Headroom", "cel_shading_k", 8)
+mgr.set_filter_param("Max Headroom", "cel_edge_style", "canny")
+
+# Enable bloom
+mgr.set_filter_param("Max Headroom", "bloom", True)
+mgr.set_filter_param("Max Headroom", "bloom_threshold", 0.7)
+mgr.set_filter_param("Max Headroom", "bloom_intensity", 0.4)
+
+# Comic style
+mgr.set_filter_param("Max Headroom", "comic_style", True)
+mgr.set_filter_param("Max Headroom", "comic_dots", 0.15)
+```
+
 ---
 
 ## SOTA Graphics Engine
@@ -334,6 +399,11 @@ Production-grade open-source computer vision techniques used across all filters.
 | **Radial CA** | Lens distortion simulation | OpenCV remap |
 | **Temporal EMA** | Frame-to-frame coherence | Exponential smoothing |
 | **GPU CUDA/OpenCL** | Hardware acceleration | OpenCV GPU module |
+| **Cel-Shading** (v3.4) | Canny/Sobel edge outlines + k-means flat color | OpenCV |
+| **Bloom/Glow** (v3.4) | Threshold + Gaussian blur glow composite | OpenCV |
+| **Ink Edges** (v3.4) | Difference-of-Gaussians dark outlines | Classic algorithm |
+| **Colored Edges** (v3.4) | Neon/stylized colored edge outlines | OpenCV |
+| **Comic Style** (v3.4) | Halftone dots + quantization + outlines | OpenCV |
 
 ### Performance Benchmarks (100×100 frame)
 
@@ -355,11 +425,26 @@ Production-grade open-source computer vision techniques used across all filters.
 from filters.graphics_engine import (
     AlphaCompositor, PyramidBlend, CLAHEEnhancer,
     ColorQuantizer, Dithering, GuidedFilter,
-    FilmGrain, ChromaticAberration, ScanlineEffects
+    FilmGrain, ChromaticAberration, ScanlineEffects,
+    CelShading, BloomEffect, StylizedEdges,
 )
 
 # Gamma-correct blending
 result = AlphaCompositor.composite(background, foreground, alpha_mask)
+
+# Cel-shading (v3.4)
+result = CelShading.apply(frame, quantize_levels=6)
+result = CelShading.apply_color_quantized(frame, k=8, edge_style="sobel")
+result = CelShading.comic_style(frame, k=6, dot_density=0.15)
+
+# Bloom / glow (v3.4)
+result = BloomEffect.apply(frame, threshold=0.7, intensity=0.4)
+result = BloomEffect.apply(frame, color=(0, 200, 255))  # Tinted cyan
+result = BloomEffect.glow_edges(frame, glow_color=(255, 0, 255))  # Neon magenta
+
+# Stylized edges (v3.4)
+result = StylizedEdges.ink_edges(frame, strength=1.5)
+result = StylizedEdges.colored_edges(frame, edge_color=(255, 100, 255))
 
 # Multi-scale seamless blend
 result = PyramidBlend.blend(image_a, image_b, mask, levels=4)
@@ -457,10 +542,11 @@ set('tracker.eye_glow', True)
 | Filter Manager | `filters/manager.py` | Pipeline orchestrator |
 | Skin Smoothing | `filters/skin_smoothing.py` | Beauty filter |
 | Background | `filters/background.py` | Virtual backgrounds |
-| AR Overlay | `filters/ar_overlay.py` | Stickers & effects |
+| AR Overlay | `filters/ar_overlay.py` | Stickers & effects (wireframe + tracking dots in v3.4) |
 | Face Morph | `filters/face_morph.py` | Mesh deformation |
 | Color Grading | `filters/color_grading.py` | LUT color filters |
-| Max Headroom | `filters/max_headroom_filter.py` | Android character transformation |
+| Max Headroom | `filters/max_headroom_filter.py` | Android character transformation + v3.4 digital graphics |
+| MoCap Viz | `filters/mocap_viz.py` | Motion capture visualization overlay (v3.4) |
 
 ### Export Modules
 
@@ -524,7 +610,7 @@ python tracker.py --help
 
 ## Testing
 
-### Run All Tests
+### Run All Tests (204 total)
 ```bash
 # v3.0 core tests (24 tests)
 python run_tests.py
@@ -532,16 +618,16 @@ python run_tests.py
 # v3.1 pipeline tests (16 tests)
 python test_v31.py
 
-# Filter system tests (37 tests)
-python test_filters.py
-
-# End-to-end integration tests (38 tests)
-python test_e2e.py
-
-# SOTA graphics engine tests (34 tests)
+# SOTA graphics engine tests (54 tests)
 python test_graphics.py
 
-# Run all test suites at once
+# Filter system tests (69 tests) — covers all 7 filters + MoCap
+python test_filters.py
+
+# End-to-end integration tests (41 tests)
+python test_e2e.py
+
+# Run all 5 test suites at once
 python launch.py --all-tests
 
 # Quick validation
@@ -553,10 +639,10 @@ python launch.py --quick-test
 |-------|-------|--------|
 | v3.0 Core | 24 | ✅ Pass |
 | v3.1 Pipeline | 16 | ✅ Pass |
-| Filter System | 37 | ✅ Pass |
-| End-to-End | 38 | ✅ Pass |
-| SOTA Graphics | 34 | ✅ Pass |
-| **Total** | **149** | **✅ 100%** |
+| SOTA Graphics Engine | 54 | ✅ Pass |
+| Filter System | 69 | ✅ Pass |
+| End-to-End | 41 | ✅ Pass |
+| **Total** | **204** | **✅ 100%** |
 
 ---
 
@@ -664,6 +750,7 @@ filter/
 │   ├── face_morph.py
 │   ├── color_grading.py
 │   ├── max_headroom_filter.py  # Android character filter
+│   ├── mocap_viz.py            # MoCap visualization overlay (v3.4)
 │   └── graphics_engine.py      # SOTA graphics engine
 └── README.md             # This file
 ```
@@ -685,4 +772,4 @@ MIT License - Free for commercial and personal use.
 
 ---
 
-*Max Headroom v3.1 - Built with OpenCV, NumPy, and MediaPipe. No placeholders, no hacks - production-ready.*
+*Max Headroom v3.4 - Built with OpenCV, NumPy, and MediaPipe. No placeholders, no hacks - production-ready.*

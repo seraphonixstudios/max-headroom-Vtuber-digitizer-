@@ -24,7 +24,8 @@ try:
     from .graphics_engine import (
         ColorQuantizer, Dithering, ChromaticAberration,
         ScanlineEffects, FilmGrain, CLAHEEnhancer,
-        TemporalSmoother, AlphaCompositor, PyramidBlend
+        TemporalSmoother, AlphaCompositor, PyramidBlend,
+        CelShading, BloomEffect, StylizedEdges,
     )
     SOTA_AVAILABLE = True
 except ImportError:
@@ -89,6 +90,20 @@ class MaxHeadroomFilter(Filter):
             "clahe_clip": 2.0,
             "temporal_smooth": True,
             "temporal_alpha": 0.75,
+            # v3.4 Digital Graphics upgrades
+            "cel_shading": False,
+            "cel_shading_k": 8,
+            "cel_edge_style": "canny",
+            "bloom": False,
+            "bloom_threshold": 0.7,
+            "bloom_intensity": 0.4,
+            "bloom_color": None,
+            "comic_style": False,
+            "comic_dots": 0.15,
+            "neon_edges": False,
+            "neon_edge_color": [255, 100, 255],
+            "ink_edges": False,
+            "presentation_mode": "crt",  # crt, cel, bloom, comic, neon, clean
         }
         
         self._prev_frame = None
@@ -176,14 +191,53 @@ class MaxHeadroomFilter(Filter):
         # 10. Vignette
         if self.params["vignette"]:
             result = self._apply_vignette(result, h, w, intensity)
-        
-        # 11. Posterization + Dithering (SOTA) - applied LAST for visible effect
+
+        # 11. Cel-shading (v3.4 digital graphics)
+        if SOTA_AVAILABLE and self.params["cel_shading"] and intensity > 0.3:
+            result = CelShading.apply_color_quantized(
+                result,
+                k=self.params["cel_shading_k"],
+                edge_style=self.params["cel_edge_style"],
+                edge_strength=intensity,
+            )
+
+        # 12. Comic style (v3.4)
+        if SOTA_AVAILABLE and self.params["comic_style"] and intensity > 0.3:
+            result = CelShading.comic_style(
+                result,
+                k=self.params["cel_shading_k"],
+                dot_density=self.params["comic_dots"] * intensity,
+            )
+
+        # 13. Ink edges (v3.4)
+        if SOTA_AVAILABLE and self.params["ink_edges"] and intensity > 0.3:
+            result = StylizedEdges.ink_edges(result, strength=intensity)
+
+        # 14. Neon edges (v3.4)
+        if SOTA_AVAILABLE and self.params["neon_edges"] and intensity > 0.3:
+            result = StylizedEdges.colored_edges(
+                result,
+                edge_color=tuple(self.params["neon_edge_color"]),
+            )
+
+        # 15. Bloom/glow (v3.4)
+        if SOTA_AVAILABLE and self.params["bloom"] and intensity > 0.2:
+            bc = self.params["bloom_color"]
+            result = BloomEffect.apply(
+                result,
+                threshold=self.params["bloom_threshold"],
+                blur_radius=9,
+                intensity=self.params["bloom_intensity"] * intensity,
+                color=tuple(bc) if bc else None,
+            )
+
+        # 16. Posterization + Dithering (SOTA) - applied near end
         if SOTA_AVAILABLE and self.params["posterize"] and intensity > 0.3:
             result = ColorQuantizer.quantize_fast(result, k=self.params["posterize_levels"])
             if self.params["dither"]:
                 result = Dithering.ordered_dither(result, levels=self.params["dither_levels"])
         
-        # 12. Temporal coherence (SOTA)
+        # 17. Temporal coherence (SOTA)
         if SOTA_AVAILABLE and self.params["temporal_smooth"]:
             result = self._temporal.apply(result)
         

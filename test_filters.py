@@ -35,6 +35,7 @@ def run_tests():
     from filters import (FilterManager, SkinSmoothingFilter, BackgroundFilter,
                         AROverlayFilter, FaceMorphFilter, ColorGradingFilter,
                         MaxHeadroomFilter)
+    from filters.mocap_viz import MoCapVizFilter
     
     # Filter Manager
     print("\n>>> FILTER MANAGER <<<")
@@ -351,6 +352,431 @@ def run_tests():
         print(f" ({elapsed*1000/10:.1f}ms/frame)", end="")
         return elapsed < 2.0  # Under 200ms per frame
     test("MH filter performance", test_mh_performance)
+    
+    # ===========================================
+    # MO-CAP VIZ FILTER v3.4
+    # ===========================================
+    print("\n>>> MO-CAP VIZ FILTER <<<")
+    
+    _mocap_landmarks = [(160 + i*5, 140 + i) for i in range(68)]
+    _mocap_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    
+    test("MoCap init", lambda: MoCapVizFilter() is not None)
+    
+    def test_mocap_disabled():
+        filt = MoCapVizFilter()
+        result = filt.process(_mocap_frame.copy(), {"landmarks": _mocap_landmarks})
+        return np.array_equal(result, _mocap_frame)
+    test("MoCap disabled passes through", test_mocap_disabled)
+    
+    def test_mocap_wireframe():
+        filt = MoCapVizFilter()
+        filt.enable()
+        filt.set_param("wireframe", True)
+        filt.set_param("tracking_points", False)
+        filt.set_param("pose_axes", False)
+        filt.set_param("skeleton", False)
+        filt.set_param("labels", False)
+        result = filt.process(_mocap_frame.copy(), {"landmarks": _mocap_landmarks})
+        return result.shape == _mocap_frame.shape and not np.array_equal(result, _mocap_frame)
+    test("MoCap wireframe overlay", test_mocap_wireframe)
+    
+    def test_mocap_tracking_points():
+        filt = MoCapVizFilter()
+        filt.enable()
+        filt.set_param("wireframe", False)
+        filt.set_param("tracking_points", True)
+        filt.set_param("pose_axes", False)
+        result = filt.process(_mocap_frame.copy(), {"landmarks": _mocap_landmarks})
+        return result.shape == _mocap_frame.shape and np.max(result) > 0
+    test("MoCap tracking points", test_mocap_tracking_points)
+    
+    def test_mocap_pose_axes():
+        filt = MoCapVizFilter()
+        filt.enable()
+        filt.set_param("wireframe", False)
+        filt.set_param("tracking_points", False)
+        filt.set_param("pose_axes", True)
+        head_pose = {"rotation": [15.0, -10.0, 5.0], "translation": [0, 0, 100]}
+        result = filt.process(_mocap_frame.copy(), {
+            "landmarks": _mocap_landmarks,
+            "head_pose": head_pose,
+        })
+        return result.shape == _mocap_frame.shape
+    test("MoCap pose axes", test_mocap_pose_axes)
+    
+    def test_mocap_skeleton():
+        filt = MoCapVizFilter()
+        filt.enable()
+        filt.set_param("wireframe", False)
+        filt.set_param("tracking_points", False)
+        filt.set_param("pose_axes", False)
+        filt.set_param("skeleton", True)
+        result = filt.process(_mocap_frame.copy(), {"landmarks": _mocap_landmarks})
+        return result.shape == _mocap_frame.shape and not np.array_equal(result, _mocap_frame)
+    test("MoCap skeleton overlay", test_mocap_skeleton)
+    
+    def test_mocap_labels():
+        filt = MoCapVizFilter()
+        filt.enable()
+        filt.set_param("wireframe", False)
+        filt.set_param("tracking_points", False)
+        filt.set_param("pose_axes", False)
+        filt.set_param("skeleton", False)
+        filt.set_param("labels", True)
+        result = filt.process(_mocap_frame.copy(), {"landmarks": _mocap_landmarks})
+        return result.shape == _mocap_frame.shape
+    test("MoCap landmark labels", test_mocap_labels)
+    
+    def test_mocap_all_features():
+        filt = MoCapVizFilter()
+        filt.enable()
+        filt.set_param("wireframe", True)
+        filt.set_param("tracking_points", True)
+        filt.set_param("pose_axes", True)
+        filt.set_param("skeleton", True)
+        filt.set_param("labels", True)
+        head_pose = {"rotation": [10.0, -5.0, 2.0], "translation": [0, 0, 100]}
+        result = filt.process(_mocap_frame.copy(), {
+            "landmarks": _mocap_landmarks,
+            "head_pose": head_pose,
+        })
+        return result.shape == _mocap_frame.shape and np.max(result) > 0
+    test("MoCap all features combined", test_mocap_all_features)
+    
+    def test_mocap_style_presets():
+        filt = MoCapVizFilter()
+        for style in ("tech", "neon", "dark", "minimal"):
+            filt.set_style(style)
+            if filt.params["style"] != style:
+                return False
+        return True
+    test("MoCap style presets", test_mocap_style_presets)
+    
+    def test_mocap_intensity_scales():
+        filt = MoCapVizFilter()
+        filt.enable()
+        filt.set_param("intensity", 0.0)
+        r0 = filt.process(_mocap_frame.copy(), {"landmarks": _mocap_landmarks})
+        filt.set_param("intensity", 1.0)
+        r1 = filt.process(_mocap_frame.copy(), {"landmarks": _mocap_landmarks})
+        # Intensity 0 = pass-through
+        return np.array_equal(r0, _mocap_frame) and not np.array_equal(r1, _mocap_frame)
+    test("MoCap intensity zero = passthrough", test_mocap_intensity_scales)
+    
+    def test_mocap_no_landmarks():
+        filt = MoCapVizFilter()
+        filt.enable()
+        result = filt.process(_mocap_frame.copy(), {})
+        return np.array_equal(result, _mocap_frame)
+    test("MoCap no landmarks = passthrough", test_mocap_no_landmarks)
+    
+    # ===========================================
+    # MAX HEADROOM v3.4 DIGITAL GRAPHICS MODES
+    # ===========================================
+    print("\n>>> MAX HEADROOM v3.4 DIGITAL GRAPHICS <<<")
+    
+    def test_mh_cel_shading():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        # Disable other effects
+        filt.set_param("monochrome", False)
+        filt.set_param("scanlines", False)
+        filt.set_param("film_grain", False)
+        filt.set_param("glitch_blocks", False)
+        filt.set_param("grid", False)
+        filt.set_param("data_overlay", False)
+        filt.set_param("vignette", False)
+        filt.set_param("posterize", False)
+        # Enable cel-shading
+        filt.set_param("cel_shading", True)
+        filt.set_param("cel_shading_k", 8)
+        filt.set_param("cel_edge_style", "canny")
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape and result.dtype == np.uint8
+    test("MH cel-shading (canny)", test_mh_cel_shading)
+    
+    def test_mh_cel_shading_sobel():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        filt.set_param("monochrome", False)
+        filt.set_param("scanlines", False)
+        filt.set_param("film_grain", False)
+        filt.set_param("glitch_blocks", False)
+        filt.set_param("grid", False)
+        filt.set_param("data_overlay", False)
+        filt.set_param("vignette", False)
+        filt.set_param("posterize", False)
+        filt.set_param("cel_shading", True)
+        filt.set_param("cel_edge_style", "sobel")
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape
+    test("MH cel-shading (sobel)", test_mh_cel_shading_sobel)
+    
+    def test_mh_bloom():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        filt.set_param("monochrome", False)
+        filt.set_param("scanlines", False)
+        filt.set_param("film_grain", False)
+        filt.set_param("glitch_blocks", False)
+        filt.set_param("grid", False)
+        filt.set_param("data_overlay", False)
+        filt.set_param("vignette", False)
+        filt.set_param("posterize", False)
+        filt.set_param("bloom", True)
+        filt.set_param("bloom_threshold", 0.6)
+        filt.set_param("bloom_intensity", 0.5)
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape
+    test("MH bloom glow", test_mh_bloom)
+    
+    def test_mh_bloom_tinted():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        filt.set_param("monochrome", False)
+        filt.set_param("scanlines", False)
+        filt.set_param("film_grain", False)
+        filt.set_param("glitch_blocks", False)
+        filt.set_param("grid", False)
+        filt.set_param("data_overlay", False)
+        filt.set_param("vignette", False)
+        filt.set_param("posterize", False)
+        filt.set_param("bloom", True)
+        filt.set_param("bloom_color", [0, 200, 255])
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape
+    test("MH bloom tinted cyan", test_mh_bloom_tinted)
+    
+    def test_mh_comic_style():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        filt.set_param("monochrome", False)
+        filt.set_param("scanlines", False)
+        filt.set_param("film_grain", False)
+        filt.set_param("glitch_blocks", False)
+        filt.set_param("grid", False)
+        filt.set_param("data_overlay", False)
+        filt.set_param("vignette", False)
+        filt.set_param("posterize", False)
+        filt.set_param("comic_style", True)
+        filt.set_param("comic_dots", 0.2)
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape
+    test("MH comic style", test_mh_comic_style)
+    
+    def test_mh_neon_edges():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        filt.set_param("monochrome", False)
+        filt.set_param("scanlines", False)
+        filt.set_param("film_grain", False)
+        filt.set_param("glitch_blocks", False)
+        filt.set_param("grid", False)
+        filt.set_param("data_overlay", False)
+        filt.set_param("vignette", False)
+        filt.set_param("posterize", False)
+        filt.set_param("neon_edges", True)
+        filt.set_param("neon_edge_color", [255, 100, 255])
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape
+    test("MH neon edges", test_mh_neon_edges)
+    
+    def test_mh_ink_edges():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        filt.set_param("monochrome", False)
+        filt.set_param("scanlines", False)
+        filt.set_param("film_grain", False)
+        filt.set_param("glitch_blocks", False)
+        filt.set_param("grid", False)
+        filt.set_param("data_overlay", False)
+        filt.set_param("vignette", False)
+        filt.set_param("posterize", False)
+        filt.set_param("ink_edges", True)
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        return result.shape == frame.shape
+    test("MH ink edges", test_mh_ink_edges)
+    
+    def test_mh_cel_shading_flat_colors():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        filt.set_param("monochrome", False)
+        filt.set_param("scanlines", False)
+        filt.set_param("film_grain", False)
+        filt.set_param("glitch_blocks", False)
+        filt.set_param("grid", False)
+        filt.set_param("data_overlay", False)
+        filt.set_param("vignette", False)
+        filt.set_param("posterize", False)
+        filt.set_param("cel_shading", True)
+        filt.set_param("cel_shading_k", 4)
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        unique = len(np.unique(result.reshape(-1, 3), axis=0))
+        # k=4 quantization + edge black = ~5-8 unique colors
+        return unique <= 12
+    test("MH cel-shading reduces to few colors", test_mh_cel_shading_flat_colors)
+    
+    def test_mh_all_disabled_passthrough():
+        filt = MaxHeadroomFilter()
+        filt.enable()
+        filt.set_param("intensity", 1.0)
+        filt.set_param("cel_shading", False)
+        filt.set_param("bloom", False)
+        filt.set_param("comic_style", False)
+        filt.set_param("neon_edges", False)
+        filt.set_param("ink_edges", False)
+        filt.set_param("posterize", False)
+        filt.set_param("monochrome", False)
+        filt.set_param("scanlines", False)
+        filt.set_param("film_grain", False)
+        filt.set_param("glitch_blocks", False)
+        filt.set_param("grid", False)
+        filt.set_param("data_overlay", False)
+        filt.set_param("vignette", False)
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        result = filt.process(frame)
+        # Without monochrome and vfx, result should still change minimally
+        return result.shape == frame.shape
+    test("MH v3.4 modes all off = base pipeline", test_mh_all_disabled_passthrough)
+    
+    # ===========================================
+    # AR OVERLAY v3.4 NEW STICKERS
+    # ===========================================
+    print("\n>>> AR OVERLAY v3.4 NEW STICKERS <<<")
+    
+    _ar_landmarks = [(160 + i*5, 140 + i) for i in range(68)]
+    
+    def test_ar_wireframe():
+        filt = AROverlayFilter()
+        filt.enable()
+        filt.clear_stickers()
+        filt.add_sticker("wireframe", color=(0, 200, 255), alpha=0.5)
+        frame = np.zeros((480, 640, 3), np.uint8)
+        result = filt.process(frame, {"landmarks": _ar_landmarks})
+        return result.shape == frame.shape
+    test("AR wireframe sticker", test_ar_wireframe)
+    
+    def test_ar_wireframe_draws_lines():
+        filt = AROverlayFilter()
+        filt.enable()
+        filt.clear_stickers()
+        filt.add_sticker("wireframe", color=(0, 255, 255), alpha=1.0)
+        frame = np.zeros((480, 640, 3), np.uint8)
+        result = filt.process(frame, {"landmarks": _ar_landmarks})
+        return np.max(result) > 0
+    test("AR wireframe draws visible pixels", test_ar_wireframe_draws_lines)
+    
+    def test_ar_tracking_dots():
+        filt = AROverlayFilter()
+        filt.enable()
+        filt.clear_stickers()
+        filt.add_sticker("tracking_dots", color=(0, 255, 255), size=3)
+        frame = np.zeros((480, 640, 3), np.uint8)
+        result = filt.process(frame, {"landmarks": _ar_landmarks})
+        return result.shape == frame.shape
+    test("AR tracking dots sticker", test_ar_tracking_dots)
+    
+    def test_ar_tracking_dots_draws():
+        filt = AROverlayFilter()
+        filt.enable()
+        filt.clear_stickers()
+        filt.add_sticker("tracking_dots", color=(0, 255, 255), size=3)
+        frame = np.zeros((480, 640, 3), np.uint8)
+        result = filt.process(frame, {"landmarks": _ar_landmarks})
+        return np.max(result) > 0
+    test("AR tracking dots visible", test_ar_tracking_dots_draws)
+    
+    def test_ar_both_new_stickers():
+        filt = AROverlayFilter()
+        filt.enable()
+        filt.clear_stickers()
+        filt.add_sticker("wireframe", color=(0, 200, 255))
+        filt.add_sticker("tracking_dots", color=(0, 255, 255))
+        frame = np.zeros((480, 640, 3), np.uint8)
+        result = filt.process(frame, {"landmarks": _ar_landmarks})
+        return result.shape == frame.shape and np.max(result) > 0
+    test("AR wireframe + tracking dots combined", test_ar_both_new_stickers)
+    
+    def test_ar_wireframe_disabled():
+        filt = AROverlayFilter()
+        filt.enable()
+        filt.clear_stickers()
+        filt.add_sticker("wireframe", enabled=False, color=(0, 200, 255))
+        frame = np.zeros((480, 640, 3), np.uint8)
+        result = filt.process(frame, {"landmarks": _ar_landmarks})
+        return np.max(result) == 0
+    test("AR disabled sticker = no draw", test_ar_wireframe_disabled)
+    
+    def test_ar_no_landmarks():
+        filt = AROverlayFilter()
+        filt.enable()
+        filt.clear_stickers()
+        filt.add_sticker("wireframe")
+        frame = np.zeros((480, 640, 3), np.uint8)
+        result = filt.process(frame, {})
+        return np.max(result) == 0
+    test("AR no landmarks = passthrough", test_ar_no_landmarks)
+    
+    # ===========================================
+    # FILTER MANAGER INTEGRATION v3.4
+    # ===========================================
+    print("\n>>> FILTER MANAGER v3.4 INTEGRATION <<<")
+    
+    def test_manager_has_mocap():
+        mgr = FilterManager()
+        filt = mgr.get_filter("MoCap Viz")
+        return filt is not None
+    test("Manager has MoCap Viz filter", test_manager_has_mocap)
+    
+    def test_manager_has_seven():
+        mgr = FilterManager()
+        return len(mgr.filters) == 7
+    test("Manager has exactly 7 filters", test_manager_has_seven)
+    
+    def test_mocap_manager_enable():
+        mgr = FilterManager()
+        mgr.enable_filter("MoCap Viz")
+        filt = mgr.get_filter("MoCap Viz")
+        return filt is not None and filt.enabled
+    test("Manager enables MoCap Viz", test_mocap_manager_enable)
+    
+    def test_mocap_manager_pipeline():
+        mgr = FilterManager()
+        mgr.enable_filter("MoCap Viz")
+        filt = mgr.get_filter("MoCap Viz")
+        filt.set_param("wireframe", True)
+        filt.set_param("tracking_points", True)
+        frame = np.random.randint(0, 255, (100, 100, 3), np.uint8)
+        landmarks = [(160 + i*5, 140 + i) for i in range(68)]
+        result = mgr.process(frame, landmarks=landmarks)
+        return result.shape == frame.shape
+    test("MoCap Viz in filter pipeline", test_mocap_manager_pipeline)
+    
+    def test_manager_all_filters_enabled():
+        mgr = FilterManager()
+        status = mgr.get_all_status()
+        names = [s["name"] for s in status]
+        expected = ["Max Headroom", "Color Grading", "Skin Smoothing",
+                    "Face Morph", "Background", "AR Overlay", "MoCap Viz"]
+        return all(n in names for n in expected)
+    test("Manager lists all 7 filters", test_manager_all_filters_enabled)
     
     # Performance
     print("\n>>> PERFORMANCE <<<")

@@ -13,6 +13,7 @@ from .ar_overlay import AROverlayFilter
 from .face_morph import FaceMorphFilter
 from .color_grading import ColorGradingFilter
 from .max_headroom_filter import MaxHeadroomFilter
+from .mocap_viz import MoCapVizFilter
 
 try:
     from logging_utils import get_logger
@@ -47,6 +48,7 @@ class FilterManager:
         self.filters.append(FaceMorphFilter())          # 15
         self.filters.append(BackgroundRemovalFilter())  # 20
         self.filters.append(AROverlayFilter())          # 30
+        self.filters.append(MoCapVizFilter())            # 35
         
         LOG.info("Initialized %d filters", len(self.filters))
     

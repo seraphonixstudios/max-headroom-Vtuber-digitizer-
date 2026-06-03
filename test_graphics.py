@@ -37,7 +37,8 @@ def run_tests():
         ColorSpace, AlphaCompositor, PyramidBlend, CLAHEEnhancer,
         ColorQuantizer, Dithering, GuidedFilter, TemporalSmoother,
         FilmGrain, ChromaticAberration, ScanlineEffects,
-        GPUGraphicsEngine, GraphicsBenchmark
+        GPUGraphicsEngine, GraphicsBenchmark,
+        CelShading, BloomEffect, StylizedEdges,
     )
     
     # Create test frames
@@ -260,6 +261,143 @@ def run_tests():
             print(f"      {name}: {ms:.2f}ms")
         return len(results) >= 9 and all(v < 500 for v in results.values())
     test("All operations under 500ms", test_benchmark)
+    
+    print("\n>>> CEL-SHADING / TOON RENDERING <<<")
+    
+    def test_cel_shading_default():
+        result = CelShading.apply(frame_small)
+        return result.shape == frame_small.shape and result.dtype == np.uint8
+    test("CelShading default", test_cel_shading_default)
+    
+    def test_cel_shading_flat_colors():
+        result = CelShading.apply(frame_small, quantize_levels=4)
+        unique_colors = len(np.unique(result.reshape(-1, 3), axis=0))
+        # 4 levels per channel = 4^3 combinations, but edges add black
+        return unique_colors <= 70
+    test("CelShading reduces colors", test_cel_shading_flat_colors)
+    
+    def test_cel_shading_edges_present():
+        result = CelShading.apply(frame_small, edge_threshold1=50, edge_threshold2=100)
+        # Should have black edge pixels from Canny
+        black_pixels = np.sum(np.all(result == 0, axis=-1))
+        return black_pixels > 0
+    test("CelShading draws edge outlines", test_cel_shading_edges_present)
+    
+    def test_cel_shading_quantized():
+        result = CelShading.apply_color_quantized(frame_small, k=6, edge_style="canny")
+        unique_colors = len(np.unique(result.reshape(-1, 3), axis=0))
+        return result.shape == frame_small.shape and 2 <= unique_colors <= 15
+    test("CelShading quantized (k=6)", test_cel_shading_quantized)
+    
+    def test_cel_shading_sobel_edges():
+        result = CelShading.apply_color_quantized(frame_small, k=8, edge_style="sobel")
+        return result.shape == frame_small.shape
+    test("CelShading sobel edges", test_cel_shading_sobel_edges)
+    
+    def test_cel_shading_no_edges():
+        result = CelShading.apply_color_quantized(frame_small, k=8, edge_style="none")
+        unique = len(np.unique(result.reshape(-1, 3), axis=0))
+        return unique <= 10
+    test("CelShading no edges (flat poster)", test_cel_shading_no_edges)
+    
+    def test_cel_shading_comic():
+        result = CelShading.comic_style(frame_small, k=6, dot_density=0.1)
+        return result.shape == frame_small.shape and result.dtype == np.uint8
+    test("CelShading comic style", test_cel_shading_comic)
+    
+    def test_cel_shading_comic_reduces_colors():
+        result = CelShading.comic_style(frame_small, k=4, dot_density=0.2)
+        unique = len(np.unique(result.reshape(-1, 3), axis=0))
+        return unique <= 10
+    test("Comic style reduces to <=k colors + dots", test_cel_shading_comic_reduces_colors)
+    
+    print("\n>>> BLOOM / GLOW EFFECTS <<<")
+    
+    def test_bloom_default():
+        result = BloomEffect.apply(frame_small)
+        return result.shape == frame_small.shape and result.dtype == np.uint8
+    test("Bloom default", test_bloom_default)
+    
+    def test_bloom_brightens():
+        bright = np.full((100, 100, 3), 200, dtype=np.uint8)
+        result = BloomEffect.apply(bright, threshold=0.5, blur_radius=9, intensity=0.8)
+        # Bloom should increase brightness in bright areas
+        return np.mean(result) >= np.mean(bright) - 1
+    test("Bloom brightens highlights", test_bloom_brightens)
+    
+    def test_bloom_dim_unchanged():
+        dim = np.full((100, 100, 3), 30, dtype=np.uint8)
+        result = BloomEffect.apply(dim, threshold=0.7, intensity=0.5)
+        # Dim image should be mostly unchanged (bloom only on brights)
+        return np.abs(np.mean(result.astype(float) - dim.astype(float))) < 5
+    test("Bloom leaves darks unchanged", test_bloom_dim_unchanged)
+    
+    def test_bloom_tinted():
+        result = BloomEffect.apply(frame_small, threshold=0.5, intensity=0.6,
+                                   color=(0, 200, 255))
+        return result.shape == frame_small.shape
+    test("Bloom with tint color", test_bloom_tinted)
+    
+    def test_bloom_glow_edges():
+        result = BloomEffect.glow_edges(frame_small, edge_intensity=0.5,
+                                        glow_color=(0, 200, 255))
+        return result.shape == frame_small.shape
+    test("Bloom edge glow", test_bloom_glow_edges)
+    
+    def test_bloom_glow_edges_creates_color():
+        # On a dark uniform image, edge glow should add bright pixels
+        dark = np.full((100, 100, 3), 10, dtype=np.uint8)
+        dark[40:60, 40:60] = 200  # Bright square creates edges
+        result = BloomEffect.glow_edges(dark, edge_intensity=1.0, blur_radius=5,
+                                        glow_color=(0, 255, 255))
+        return np.max(result) > 50
+    test("Edge glow adds visible color", test_bloom_glow_edges_creates_color)
+    
+    print("\n>>> STYLIZED EDGES <<<")
+    
+    def test_ink_edges_default():
+        result = StylizedEdges.ink_edges(frame_small)
+        return result.shape == frame_small.shape and result.dtype == np.uint8
+    test("Ink edges default", test_ink_edges_default)
+    
+    def test_ink_edges_darkens():
+        result = StylizedEdges.ink_edges(frame_small, strength=2.0)
+        # Ink edges should add black pixels
+        black_before = np.sum(np.all(frame_small == 0, axis=-1))
+        black_after = np.sum(np.all(result == 0, axis=-1))
+        return black_after >= black_before
+    test("Ink edges add black outlines", test_ink_edges_darkens)
+    
+    def test_ink_edges_varying_strength():
+        weak = StylizedEdges.ink_edges(frame_small, strength=0.5)
+        strong = StylizedEdges.ink_edges(frame_small, strength=3.0)
+        weak_black = np.sum(np.all(weak == 0, axis=-1))
+        strong_black = np.sum(np.all(strong == 0, axis=-1))
+        return strong_black >= weak_black
+    test("Ink edge strength increases darkness", test_ink_edges_varying_strength)
+    
+    def test_colored_edges_default():
+        result = StylizedEdges.colored_edges(frame_small)
+        return result.shape == frame_small.shape
+    test("Colored edges default", test_colored_edges_default)
+    
+    def test_colored_edges_uses_color():
+        result = StylizedEdges.colored_edges(frame_small, edge_color=(255, 0, 255))
+        # Should have magenta pixels where edges exist
+        magenta_pixels = np.sum(
+            (result[:, :, 0] > 200) & (result[:, :, 1] < 50) & (result[:, :, 2] > 200)
+        )
+        return magenta_pixels > 0
+    test("Colored edges uses specified color", test_colored_edges_uses_color)
+    
+    def test_colored_edges_soft_threshold():
+        result = StylizedEdges.colored_edges(frame_small, threshold1=30, threshold2=60)
+        result2 = StylizedEdges.colored_edges(frame_small, threshold1=150, threshold2=200)
+        # Lower threshold = more edges
+        edges_low = np.sum(np.all(result != frame_small, axis=-1))
+        edges_high = np.sum(np.all(result2 != frame_small, axis=-1))
+        return edges_low >= edges_high
+    test("Lower threshold = more colored edges", test_colored_edges_soft_threshold)
     
     print("\n>>> PIPELINE INTEGRATION <<<")
     

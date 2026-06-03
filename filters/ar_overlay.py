@@ -55,6 +55,10 @@ class AROverlayFilter(Filter):
                 result = self._draw_crown(result, landmarks, sticker)
             elif sticker_type == "tears":
                 result = self._draw_tears(result, landmarks, sticker)
+            elif sticker_type == "wireframe":
+                result = self._draw_wireframe_overlay(result, landmarks, sticker)
+            elif sticker_type == "tracking_dots":
+                result = self._draw_tracking_dots(result, landmarks, sticker)
         
         return result
     
@@ -254,3 +258,68 @@ class AROverlayFilter(Filter):
             cv2.circle(frame, (x, y + 30), 2, (255, 255, 255), -1)
         
         return frame
+    
+    FACEMESH_CONTOURS = [
+        (0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7),
+        (7, 8), (8, 9), (9, 10), (10, 11), (11, 12), (12, 13),
+        (13, 14), (14, 15), (15, 16),
+        (17, 18), (18, 19), (19, 20), (20, 21),
+        (22, 23), (23, 24), (24, 25), (25, 26),
+        (27, 28), (28, 29), (29, 30), (30, 31),
+        (32, 33), (33, 34), (34, 35), (35, 36),
+        (36, 37), (37, 38), (38, 39), (39, 40), (40, 41), (41, 42),
+        (43, 44), (44, 45), (45, 46), (46, 47),
+    ]
+    
+    FACEMESH_TESSELATION = [
+        (0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6),
+        (6, 7), (7, 8), (8, 9), (9, 10), (10, 11), (11, 12),
+        (12, 13), (13, 14), (14, 15), (15, 16),
+        (17, 18), (18, 19), (19, 20), (20, 21),
+        (22, 23), (23, 24), (24, 25), (25, 26),
+        (27, 28), (28, 29), (29, 30), (30, 31),
+        (32, 33), (33, 34), (34, 35), (35, 36),
+        (36, 37), (37, 38), (38, 39), (39, 40), (40, 41), (41, 42),
+        (43, 44), (44, 45), (45, 46), (46, 47),
+    ]
+
+    def _draw_wireframe_overlay(self, frame: np.ndarray, landmarks: List,
+                                 sticker: Dict) -> np.ndarray:
+        """Draw face wireframe overlay for mocap/digital look."""
+        if len(landmarks) < 68:
+            return frame
+        color = sticker.get("color", (0, 200, 255))
+        alpha = sticker.get("alpha", 0.5)
+        pts = np.array(landmarks[:68], dtype=np.int32)
+        
+        overlay = frame.copy()
+        for i, j in self.FACEMESH_TESSELATION:
+            if i < len(pts) and j < len(pts):
+                cv2.line(overlay, tuple(pts[i]), tuple(pts[j]), color, 1, cv2.LINE_AA)
+        for i, j in self.FACEMESH_CONTOURS:
+            if i < len(pts) and j < len(pts):
+                c = (color[0]//2, color[1]//2, color[2]//2)
+                cv2.line(overlay, tuple(pts[i]), tuple(pts[j]), c, 2, cv2.LINE_AA)
+        
+        cv2.addWeighted(overlay, alpha, frame, 1.0 - alpha, 0, frame)
+        return frame
+    
+    def _draw_tracking_dots(self, frame: np.ndarray, landmarks: List,
+                             sticker: Dict) -> np.ndarray:
+        """Draw glowing tracking points on facial landmarks."""
+        if len(landmarks) < 68:
+            return frame
+        color = sticker.get("color", (0, 255, 255))
+        size = sticker.get("size", 3)
+        overlay = frame.copy()
+        
+        for i, pt in enumerate(landmarks[:68]):
+            x, y = int(pt[0]), int(pt[1])
+            if i in (36, 39, 42, 45, 30, 33, 48, 51, 54, 57, 8, 62, 66):
+                cv2.circle(overlay, (x, y), size + 2, (255, 255, 255), -1, cv2.LINE_AA)
+            cv2.circle(overlay, (x, y), size, color, -1, cv2.LINE_AA)
+            cv2.circle(overlay, (x, y), size + 4, color, 1, cv2.LINE_AA)
+        
+        cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+        return frame
+

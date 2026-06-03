@@ -189,6 +189,7 @@ Examples:
         suites = [
             ("v3.0 Core", "run_tests.py"),
             ("v3.1 Pipeline", "test_v31.py"),
+            ("Graphics Engine", "test_graphics.py"),
             ("Filter System", "test_filters.py"),
             ("End-to-End", "test_e2e.py"),
         ]

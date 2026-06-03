@@ -2,14 +2,14 @@
 """
 Max Headroom Digitizer v3.4 - Professional VTuber Studio
 Drastically improved UI, filter quality, and background removal.
-Version: 3.4.0
+Version: 3.4.1
 """
-import sys, os, cv2, numpy as np, time, json, threading, socket, argparse
+import sys, os, cv2, numpy as np, time, json, threading, socket, argparse, random, math
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List, Tuple
 from collections import deque
 
-VERSION = "3.4.0"
+VERSION = "3.4.1"
 
 try:
     import tkinter as tk
@@ -153,6 +153,10 @@ class MaxHeadroomApp:
         self.bg_mode_var = None
         self.cam_var = None
         self.quality_scale = None
+        # Dev console tracking
+        self._drawn_count = 0
+        self._last_dev_err = "none"
+        self._pipeline_active = False
     
     def _init_filters(self):
         try:
@@ -171,10 +175,20 @@ class MaxHeadroomApp:
             self.detector = None
         if not self.config.test_mode and CameraManager is not None:
             self.cam_mgr = CameraManager(timeout=3.0)
+            # Try configured index first, then scan for any available camera
             ok = self.cam_mgr.open(self.config.camera_index, self.config.resolution_w, self.config.resolution_h)
             if not ok:
-                print("[Init] Camera failed - using TEST MODE")
-                self.config.test_mode = True
+                print(f"[Init] Camera {self.config.camera_index} failed, scanning...")
+                cams = CameraManager.discover(max_index=5)
+                if cams:
+                    idx = cams[0].index
+                    print(f"[Init] Found camera at index {idx}")
+                    ok = self.cam_mgr.open(idx, self.config.resolution_w, self.config.resolution_h)
+                    if ok:
+                        self.config.camera_index = idx
+                if not ok:
+                    print("[Init] No camera found - using TEST MODE")
+                    self.config.test_mode = True
         return True
     
     def connect_websocket(self):
@@ -245,10 +259,9 @@ class MaxHeadroomApp:
         self.init()
         try:
             from gui_themes import (
-                Colors, MatrixRainCanvas, SacredGeometryCanvas, CRTOverlayCanvas,
-                NeonButton, CrystallineFrame, TerminalLog, HUDOverlay,
-                GlitchLabel, HexDisplay, WaveformCanvas,
-                StatusIndicator, BlendshapeBars, apply_dark_theme
+                Colors, MatrixRainCanvas, SacredGeometryCanvas, NeonButton,
+                CrystallineFrame, TerminalLog, GlitchLabel, HexDisplay,
+                WaveformCanvas, StatusIndicator, BlendshapeBars, apply_dark_theme
             )
         except Exception as e:
             print(f"[GUI] Themes not available: {e}")
@@ -276,7 +289,22 @@ class MaxHeadroomApp:
         apply_dark_theme(self.root)
         
         # Make all fonts sharper
-        self.root.option_add("*Font", "Segoe UI 9")
+        self.root.option_add("*Font", "{Segoe UI} 9")
+        
+        # Pre-create fonts (tuples with spaces in family name fail on some tkinter builds)
+        try:
+            import tkinter.font as tkfont
+            self.f7  = tkfont.Font(family="Segoe UI", size=7)
+            self.f8  = tkfont.Font(family="Segoe UI", size=8)
+            self.f8b = tkfont.Font(family="Segoe UI", size=8, weight="bold")
+            self.f9  = tkfont.Font(family="Segoe UI", size=9)
+            self.f9b = tkfont.Font(family="Segoe UI", size=9, weight="bold")
+            self.f10  = tkfont.Font(family="Segoe UI", size=10)
+            self.f10b = tkfont.Font(family="Segoe UI", size=10, weight="bold")
+            self.f11  = tkfont.Font(family="Segoe UI", size=11)
+            self.f16b = tkfont.Font(family="Segoe UI", size=16, weight="bold")
+        except Exception:
+            self.f7 = self.f8 = self.f8b = self.f9 = self.f9b = self.f10 = self.f10b = self.f11 = self.f16b = None
         
         # ===================================================================
         # HEADER
@@ -288,17 +316,17 @@ class MaxHeadroomApp:
         title_box = tk.Frame(header, bg=BG)
         title_box.pack(side=tk.LEFT)
         tk.Label(title_box, text="MAX HEADROOM", fg=ACCENT, bg=BG,
-                font=("Segoe UI", 16, "bold")).pack(side=tk.LEFT)
+                font=self.f16b).pack(side=tk.LEFT)
         tk.Label(title_box, text=f"  STUDIO", fg=TEXT_DIM, bg=BG,
-                font=("Segoe UI", 11)).pack(side=tk.LEFT)
+                font=self.f11).pack(side=tk.LEFT)
         
         # Center: Recording + Mode
         center_box = tk.Frame(header, bg=BG)
         center_box.pack(side=tk.LEFT, padx=40)
-        self.rec_dot = tk.Label(center_box, text="", fg=RED, bg=BG, font=("Segoe UI", 10))
+        self.rec_dot = tk.Label(center_box, text="", fg=RED, bg=BG, font=self.f10)
         self.rec_dot.pack(side=tk.LEFT)
         self.mode_text = tk.Label(center_box, text="STANDBY", fg=ORANGE, bg=BG,
-                                 font=("Segoe UI", 10, "bold"))
+                                 font=self.f10b)
         self.mode_text.pack(side=tk.LEFT, padx=8)
         
         # Right: Indicators
@@ -310,7 +338,7 @@ class MaxHeadroomApp:
             ind_obj = StatusIndicator(box, color=RED if label == "CAM" else RED, width=14, height=14)
             ind_obj.pack(side=tk.LEFT)
             setattr(self, color_attr, ind_obj)
-            tk.Label(box, text=label, fg=TEXT_DIM, bg=BG, font=("Segoe UI", 7)).pack(side=tk.LEFT, padx=(4, 0))
+            tk.Label(box, text=label, fg=TEXT_DIM, bg=BG, font=self.f7).pack(side=tk.LEFT, padx=(4, 0))
         
         # ===================================================================
         # MAIN SPLIT
@@ -330,9 +358,9 @@ class MaxHeadroomApp:
         preview_hdr.pack(fill=tk.X)
         preview_hdr.pack_propagate(False)
         tk.Label(preview_hdr, text="PREVIEW", fg=TEXT_DIM, bg=PANEL,
-                font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=12)
+                font=self.f9b).pack(side=tk.LEFT, padx=12)
         self.preview_info = tk.Label(preview_hdr, text="640x480 @ 30fps", fg=TEXT_MUTE,
-                                    bg=PANEL, font=("Segoe UI", 9))
+                                    bg=PANEL, font=self.f9)
         self.preview_info.pack(side=tk.RIGHT, padx=12)
         
         vid_container = tk.Frame(preview_frame, bg=BG)
@@ -341,13 +369,13 @@ class MaxHeadroomApp:
         self.canvas = tk.Canvas(vid_container, bg=BG, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
         
-        self.crt_overlay = CRTOverlayCanvas(vid_container, width=640, height=480)
-        self.crt_overlay.place(x=0, y=0, relwidth=1, relheight=1)
-        self.crt_overlay.start()
-        
-        self.hud_overlay = HUDOverlay(vid_container, width=640, height=480)
-        self.hud_overlay.place(x=0, y=0, relwidth=1, relheight=1)
-        self.hud_overlay.start()
+        # Overlays drawn directly on video canvas (bg="" canvases cause TclError on this tkinter build)
+        self._crt_flicker = 0
+        self._crt_after_id = None
+        self._hud_target = None
+        self._frame_w = 640
+        self._frame_h = 480
+        self._start_crt_animation()
         
         # Scene presets under preview
         scenes_bar = tk.Frame(left, bg=BG, height=60)
@@ -366,7 +394,7 @@ class MaxHeadroomApp:
         for name, color, action in scene_data:
             btn = tk.Frame(scenes_bar, bg=PANEL, highlightbackground=BORDER, highlightthickness=1, cursor="hand2")
             btn.pack(side=tk.LEFT, padx=(0, 6), fill=tk.Y, expand=True)
-            lbl = tk.Label(btn, text=name, fg=TEXT, bg=PANEL, font=("Segoe UI", 9, "bold"))
+            lbl = tk.Label(btn, text=name, fg=TEXT, bg=PANEL, font=self.f9b)
             lbl.pack(expand=True)
             indicator = tk.Label(btn, text="", bg=color, height=1)
             indicator.pack(fill=tk.X, side=tk.BOTTOM)
@@ -377,130 +405,252 @@ class MaxHeadroomApp:
             self.scene_refs[name] = {"frame": btn, "label": lbl, "indicator": indicator, "color": color}
         self._highlight_scene("Default")
         
-        # ---- RIGHT: Control Panel ----
-        right = tk.Frame(main, bg=BG, width=420)
+        # ---- RIGHT: Tabbed Control Panel ----
+        right = tk.Frame(main, bg=BG, width=440)
         right.pack(side=tk.RIGHT, fill=tk.Y, padx=(12, 0))
         right.pack_propagate(False)
         
-        # --- Camera Section ---
-        cam_section = self._make_section(right, "CAMERA")
-        cam_inner = tk.Frame(cam_section, bg=PANEL)
-        cam_inner.pack(fill=tk.X, padx=10, pady=8)
+        # Notebook style
+        style = ttk.Style()
+        style.configure("Studio.TNotebook", background=BG, borderwidth=0)
+        style.configure("Studio.TNotebook.Tab", background=PANEL, foreground=TEXT_DIM,
+                        padding=[14, 4], font=("Segoe UI", 9))
+        style.map("Studio.TNotebook.Tab", background=[("selected", "#1a1a25"), ("active", PANEL_HOVER)],
+                  foreground=[("selected", ACCENT), ("active", TEXT)])
+        style.layout("Studio.TNotebook", [("Studio.TNotebook.client", {"sticky": "nswe"})])
         
-        cam_row = tk.Frame(cam_inner, bg=PANEL)
-        cam_row.pack(fill=tk.X)
-        tk.Label(cam_row, text="Device:", fg=TEXT_DIM, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        notebook = ttk.Notebook(right, style="Studio.TNotebook")
+        notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # ========== TAB 1: CAMERA ==========
+        cam_tab = tk.Frame(notebook, bg=PANEL)
+        notebook.add(cam_tab, text="  CAMERA  ")
+        ci = tk.Frame(cam_tab, bg=PANEL)
+        ci.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(ci, text="Device:", fg=TEXT_DIM, bg=PANEL, font=self.f9).pack(anchor="w")
         self.cam_var = tk.StringVar(value=f"Camera {self.config.camera_index}")
-        self.cam_menu = ttk.Combobox(cam_row, textvariable=self.cam_var, values=["Camera 0", "Camera 1", "Camera 2", "Test Pattern"],
-                                     state="readonly", width=18)
-        self.cam_menu.pack(side=tk.LEFT, padx=8)
+        self.cam_menu = ttk.Combobox(ci, textvariable=self.cam_var,
+                                     values=["Camera 0", "Camera 1", "Camera 2", "Test Pattern"],
+                                     state="readonly", width=20)
+        self.cam_menu.pack(fill=tk.X, pady=4)
         self.cam_menu.bind("<<ComboboxSelected>>", self._on_camera_change)
         
-        cam_btn_row = tk.Frame(cam_inner, bg=PANEL)
+        cam_btn_row = tk.Frame(ci, bg=PANEL)
         cam_btn_row.pack(fill=tk.X, pady=(8, 0))
-        self.scan_btn = tk.Button(cam_btn_row, text="SCAN", bg=BORDER, fg=TEXT, relief=tk.FLAT,
-                                 font=("Segoe UI", 9, "bold"), cursor="hand2", command=self._test_camera)
-        self.scan_btn.pack(side=tk.LEFT, padx=(0, 4))
-        self.refresh_btn = tk.Button(cam_btn_row, text="REFRESH", bg=BORDER, fg=TEXT, relief=tk.FLAT,
-                                    font=("Segoe UI", 9, "bold"), cursor="hand2", command=self._refresh_camera)
-        self.refresh_btn.pack(side=tk.LEFT, padx=4)
+        for txt, cmd in [("SCAN", self._test_camera), ("REFRESH", self._refresh_camera)]:
+            btn = tk.Button(cam_btn_row, text=txt, bg=BORDER, fg=TEXT, relief=tk.FLAT,
+                           font=self.f9b, cursor="hand2", command=cmd)
+            btn.pack(side=tk.LEFT, padx=(0, 6), fill=tk.X, expand=True)
         
-        # --- Filters Section ---
-        filt_section = self._make_section(right, "FILTERS")
-        filt_inner = tk.Frame(filt_section, bg=PANEL)
-        filt_inner.pack(fill=tk.X, padx=10, pady=8)
+        # Quick Stats
+        tk.Label(ci, text="", bg=PANEL, height=1).pack()
+        self.cam_info_label = tk.Label(ci, text="Resolution: --  FPS: --", fg=TEXT_DIM,
+                                      bg=PANEL, font=self.f9, anchor="w")
+        self.cam_info_label.pack(fill=tk.X, pady=(8, 0))
         
+        # ========== TAB 2: FILTERS ==========
+        filt_tab = tk.Frame(notebook, bg=PANEL)
+        notebook.add(filt_tab, text="  FILTERS  ")
+        
+        # Scrollable filter area
+        filt_canvas = tk.Canvas(filt_tab, bg=PANEL, highlightthickness=0)
+        filt_scroll = tk.Frame(filt_canvas, bg=PANEL)
+        filt_vbar = tk.Scrollbar(filt_tab, orient=tk.VERTICAL, command=filt_canvas.yview)
+        filt_canvas.configure(yscrollcommand=filt_vbar.set)
+        filt_vbar.pack(side=tk.RIGHT, fill=tk.Y)
+        filt_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        filt_canvas_window = filt_canvas.create_window((0, 0), window=filt_scroll, anchor="nw")
+        
+        def _configure_filt_scroll(event):
+            filt_canvas.configure(scrollregion=filt_canvas.bbox("all"))
+            filt_canvas.itemconfig(filt_canvas_window, width=filt_canvas.winfo_width())
+        filt_scroll.bind("<Configure>", _configure_filt_scroll)
+        
+        fi = filt_scroll
         self.filter_toggle_refs = {}
+        self.filter_intensity_vars = {}
         filter_data = [
-            ("Max Headroom", "MH", C.NEON_PINK if C else "#ff00aa", "Max Headroom"),
-            ("Skin Smoothing", "SKIN", C.ATLANTEAN_TEAL if C else "#00e5ff", "Skin Smoothing"),
-            ("Background", "BG", C.PLASMA_BLUE if C else "#4a90d9", "Background"),
-            ("AR Overlay", "AR", C.SACRED_GOLD if C else "#ffd700", "AR Overlay"),
-            ("Face Morph", "MORPH", C.NEON_ORANGE if C else "#ff8800", "Face Morph"),
-            ("Color Grading", "COLOR", C.MATRIX_GREEN if C else "#00cc66", "Color Grading"),
+            ("MH", C.NEON_PINK if C else "#ff00aa", "Max Headroom"),
+            ("SKIN", C.ATLANTEAN_TEAL if C else "#00e5ff", "Skin Smoothing"),
+            ("CLR", C.MATRIX_GREEN if C else "#00cc66", "Color Grading"),
+            ("MORPH", C.NEON_ORANGE if C else "#ff8800", "Face Morph"),
+            ("BG", C.PLASMA_BLUE if C else "#4a90d9", "Background"),
+            ("AR", C.SACRED_GOLD if C else "#ffd700", "AR Overlay"),
+            ("MOCAP", C.CRYSTAL_BLUE if C else "#00bbff", "MoCap Viz"),
         ]
-        for name, abbr, color, filt_name in filter_data:
-            row = tk.Frame(filt_inner, bg=PANEL, cursor="hand2")
-            row.pack(fill=tk.X, pady=3)
-            eye = tk.Label(row, text="●", fg=TEXT_MUTE, bg=PANEL, font=("Consolas", 11))
-            eye.pack(side=tk.LEFT, padx=(0, 8))
-            lbl = tk.Label(row, text=name, fg=TEXT, bg=PANEL, font=("Segoe UI", 10), anchor="w")
+        for abbr, color, filt_name in filter_data:
+            row = tk.Frame(fi, bg=PANEL)
+            row.pack(fill=tk.X, padx=8, pady=4)
+            # Eye toggle
+            eye = tk.Label(row, text="●", fg=TEXT_MUTE, bg=PANEL, font=("Consolas", 12), cursor="hand2")
+            eye.pack(side=tk.LEFT, padx=(0, 6))
+            eye.bind("<Button-1>", lambda e, fn=filt_name: self._toggle_filter(fn))
+            # Label
+            lbl = tk.Label(row, text=filt_name, fg=TEXT, bg=PANEL, font=self.f10, anchor="w", cursor="hand2")
             lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            ab = tk.Label(row, text=abbr, fg=color, bg=PANEL, font=("Segoe UI", 8, "bold"))
-            ab.pack(side=tk.RIGHT, padx=4)
-            for w in (row, eye, lbl, ab):
-                w.bind("<Button-1>", lambda e, fn=filt_name: self._toggle_filter(fn))
-            row.bind("<Enter>", lambda e, r=row: r.config(bg=PANEL_HOVER))
-            row.bind("<Leave>", lambda e, r=row: r.config(bg=PANEL))
-            self.filter_toggle_refs[filt_name] = {"eye": eye, "label": lbl, "abbr": ab, "color": color, "row": row}
+            lbl.bind("<Button-1>", lambda e, fn=filt_name: self._toggle_filter(fn))
+            # Badge
+            badge = tk.Label(row, text=abbr, fg=color, bg=PANEL, font=self.f8b)
+            badge.pack(side=tk.RIGHT, padx=2)
+            # Up/down reorder
+            up_btn = tk.Label(row, text="▲", fg=TEXT_MUTE, bg=PANEL, font=("Consolas", 8), cursor="hand2")
+            up_btn.pack(side=tk.RIGHT, padx=1)
+            up_btn.bind("<Button-1>", lambda e, fn=filt_name: self._move_filter(fn, -1))
+            down_btn = tk.Label(row, text="▼", fg=TEXT_MUTE, bg=PANEL, font=("Consolas", 8), cursor="hand2")
+            down_btn.pack(side=tk.RIGHT, padx=1)
+            down_btn.bind("<Button-1>", lambda e, fn=filt_name: self._move_filter(fn, 1))
+            # Hover
+            for w in (row, lbl, eye):
+                w.bind("<Enter>", lambda e, r=row: r.config(bg=PANEL_HOVER) if not r.cget("bg") == "#1a1a25" else None)
+                w.bind("<Leave>", lambda e, r=row: r.config(bg=PANEL))
+            # Intensity slider row
+            isl_row = tk.Frame(fi, bg=PANEL)
+            isl_row.pack(fill=tk.X, padx=20, pady=(0, 6))
+            isl_var = tk.DoubleVar(value=0.5)
+            self.filter_intensity_vars[filt_name] = isl_var
+            isl = tk.Scale(isl_row, from_=0, to=100, orient=tk.HORIZONTAL, bg=PANEL,
+                          fg=color, troughcolor=BORDER, highlightthickness=0, sliderlength=14,
+                          length=260, showvalue=0, variable=isl_var,
+                          command=lambda v, fn=filt_name: self._on_filter_intensity(fn, v))
+            isl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            # Percentage label
+            pct_lbl = tk.Label(isl_row, text="50%", fg=TEXT_DIM, bg=PANEL, font=("Consolas", 8), width=4, anchor="w")
+            pct_lbl.pack(side=tk.LEFT, padx=(4, 0))
+            isl.pct_lbl = pct_lbl
+            # Store refs
+            self.filter_toggle_refs[filt_name] = {"eye": eye, "label": lbl, "badge": badge,
+                                                  "color": color, "row": row, "isl": isl, "pct_label": pct_lbl}
         
-        # Quality slider
-        qual_row = tk.Frame(filt_inner, bg=PANEL)
-        qual_row.pack(fill=tk.X, pady=(8, 0))
-        tk.Label(qual_row, text="Quality:", fg=TEXT_DIM, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
-        self.quality_scale = tk.Scale(qual_row, from_=1, to=100, orient=tk.HORIZONTAL, bg=PANEL,
-                                     fg=ACCENT, troughcolor=BORDER, highlightthickness=0,
-                                     length=200, showvalue=0, command=self._on_quality_change)
+        # Global controls
+        sep = tk.Frame(fi, bg="#1a1a25", height=1)
+        sep.pack(fill=tk.X, padx=8, pady=4)
+        global_row = tk.Frame(fi, bg=PANEL)
+        global_row.pack(fill=tk.X, padx=8, pady=4)
+        tk.Label(global_row, text="Global Quality:", fg=TEXT_DIM, bg=PANEL, font=self.f9).pack(side=tk.LEFT)
+        self.quality_scale = tk.Scale(global_row, from_=1, to=100, orient=tk.HORIZONTAL,
+                                      bg=PANEL, fg=ACCENT, troughcolor=BORDER, highlightthickness=0,
+                                      sliderlength=14, length=160, showvalue=0,
+                                      command=self._on_quality_change)
         self.quality_scale.set(75)
-        self.quality_scale.pack(side=tk.LEFT, padx=8)
-        self.quality_label = tk.Label(qual_row, text="High", fg=ACCENT, bg=PANEL, font=("Segoe UI", 9))
+        self.quality_scale.pack(side=tk.LEFT, padx=8, fill=tk.X, expand=True)
+        self.quality_label = tk.Label(global_row, text="High", fg=ACCENT, bg=PANEL, font=self.f8)
         self.quality_label.pack(side=tk.LEFT)
         
-        # Glitch slider
-        glitch_row = tk.Frame(filt_inner, bg=PANEL)
-        glitch_row.pack(fill=tk.X, pady=(4, 0))
-        tk.Label(glitch_row, text="Glitch:", fg=TEXT_DIM, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
-        self.glitch_scale = tk.Scale(glitch_row, from_=0, to=100, orient=tk.HORIZONTAL, bg=PANEL,
-                                    fg=ACCENT, troughcolor=BORDER, highlightthickness=0,
-                                    length=200, showvalue=0, command=self.on_glitch_change)
+        glitch_row = tk.Frame(fi, bg=PANEL)
+        glitch_row.pack(fill=tk.X, padx=8, pady=(0, 8))
+        tk.Label(glitch_row, text="Glitch:", fg=TEXT_DIM, bg=PANEL, font=self.f9).pack(side=tk.LEFT)
+        self.glitch_scale = tk.Scale(glitch_row, from_=0, to=100, orient=tk.HORIZONTAL,
+                                     bg=PANEL, fg=ORANGE, troughcolor=BORDER, highlightthickness=0,
+                                     sliderlength=14, length=200, showvalue=0,
+                                     command=self.on_glitch_change)
         self.glitch_scale.set(int(self.config.glitch_intensity * 100))
-        self.glitch_scale.pack(side=tk.LEFT, padx=8)
+        self.glitch_scale.pack(side=tk.LEFT, padx=8, fill=tk.X, expand=True)
         
-        # --- Background Section ---
-        bg_section = self._make_section(right, "BACKGROUND")
-        bg_inner = tk.Frame(bg_section, bg=PANEL)
-        bg_inner.pack(fill=tk.X, padx=10, pady=8)
+        # Reset all
+        reset_btn = tk.Button(fi, text="RESET ALL FILTERS", bg="#332222", fg=RED, relief=tk.FLAT,
+                             font=self.f9b, cursor="hand2", command=self._reset_filters)
+        reset_btn.pack(fill=tk.X, padx=8, pady=(0, 8))
         
+        # ========== TAB 3: COLOR ==========
+        color_tab = tk.Frame(notebook, bg=PANEL)
+        notebook.add(color_tab, text="  COLOR  ")
+        ci2 = tk.Frame(color_tab, bg=PANEL)
+        ci2.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Background section
+        tk.Label(ci2, text="BACKGROUND", fg=TEXT_DIM, bg=PANEL, font=self.f9b).pack(anchor="w")
         self.bg_mode_var = tk.StringVar(value="remove")
+        bg_row = tk.Frame(ci2, bg=PANEL)
+        bg_row.pack(fill=tk.X, pady=4)
         for mode, label in [("remove", "Remove"), ("blur", "Blur"), ("color", "Color"), ("replace", "Image")]:
-            rb = tk.Radiobutton(bg_inner, text=label, variable=self.bg_mode_var, value=mode,
+            rb = tk.Radiobutton(bg_row, text=label, variable=self.bg_mode_var, value=mode,
                                fg=TEXT, bg=PANEL, selectcolor=BG, activebackground=PANEL,
-                               font=("Segoe UI", 9), command=self._on_bg_mode_change)
-            rb.pack(side=tk.LEFT, padx=(0, 12))
+                               font=self.f9, command=self._on_bg_mode_change)
+            rb.pack(side=tk.LEFT, padx=(0, 8))
         
-        # --- Network Section ---
-        net_section = self._make_section(right, "NETWORK")
-        net_inner = tk.Frame(net_section, bg=PANEL)
-        net_inner.pack(fill=tk.X, padx=10, pady=8)
+        # Color preset section
+        sep2 = tk.Frame(ci2, bg="#1a1a25", height=1)
+        sep2.pack(fill=tk.X, pady=8)
+        tk.Label(ci2, text="COLOR PRESETS", fg=TEXT_DIM, bg=PANEL, font=self.f9b).pack(anchor="w")
+        preset_grid = tk.Frame(ci2, bg=PANEL)
+        preset_grid.pack(fill=tk.X, pady=4)
+        presets = [("None", None), ("Warm", "warm"), ("Cool", "cool"),
+                   ("Cyberpunk", "cyberpunk"), ("Vintage", "vintage"),
+                   ("Noir", "noir"), ("Matrix", "matrix")]
+        for i, (plabel, pval) in enumerate(presets):
+            bg_color = "#1a1a25"
+            fg_color = TEXT
+            if plabel == "None":
+                bg_color = "#222230"
+                fg_color = ACCENT
+            elif plabel == "Warm":
+                bg_color = "#332211"
+                fg_color = "#ffaa44"
+            elif plabel == "Cool":
+                bg_color = "#112244"
+                fg_color = "#4488ff"
+            elif plabel == "Cyberpunk":
+                bg_color = "#221133"
+                fg_color = "#ff44ff"
+            elif plabel == "Matrix":
+                bg_color = "#112211"
+                fg_color = "#44ff44"
+            btn = tk.Label(preset_grid, text=plabel, bg=bg_color, fg=fg_color,
+                          font=self.f8b, padx=8, pady=4, cursor="hand2")
+            if pval is None:
+                btn.bind("<Button-1>", lambda e: self._set_color_preset(None))
+            else:
+                btn.bind("<Button-1>", lambda e, v=pval: self._set_color_preset(v))
+            btn.pack(side=tk.LEFT, padx=2, pady=2)
         
-        net_row1 = tk.Frame(net_inner, bg=PANEL)
-        net_row1.pack(fill=tk.X)
-        tk.Label(net_row1, text="Host:", fg=TEXT_DIM, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
-        self.host_entry = tk.Entry(net_row1, width=14, fg=TEXT, bg=BG, insertbackground=ACCENT,
-                                  relief=tk.FLAT, font=("Segoe UI", 10))
+        # ========== TAB 4: NETWORK ==========
+        net_tab = tk.Frame(notebook, bg=PANEL)
+        notebook.add(net_tab, text="  NETWORK  ")
+        ni = tk.Frame(net_tab, bg=PANEL)
+        ni.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(ni, text="Host:", fg=TEXT_DIM, bg=PANEL, font=self.f9).pack(anchor="w")
+        self.host_entry = tk.Entry(ni, fg=TEXT, bg=BG, insertbackground=ACCENT,
+                                  relief=tk.FLAT, font=self.f10)
         self.host_entry.insert(0, self.config.ws_host)
-        self.host_entry.pack(side=tk.LEFT, padx=8)
-        tk.Label(net_row1, text="Port:", fg=TEXT_DIM, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(8, 0))
-        self.port_entry = tk.Entry(net_row1, width=7, fg=TEXT, bg=BG, insertbackground=ACCENT,
-                                  relief=tk.FLAT, font=("Segoe UI", 10))
+        self.host_entry.pack(fill=tk.X, pady=2)
+        
+        tk.Label(ni, text="Port:", fg=TEXT_DIM, bg=PANEL, font=self.f9).pack(anchor="w", pady=(8, 0))
+        self.port_entry = tk.Entry(ni, fg=TEXT, bg=BG, insertbackground=ACCENT,
+                                  relief=tk.FLAT, font=self.f10)
         self.port_entry.insert(0, str(self.config.ws_port))
-        self.port_entry.pack(side=tk.LEFT, padx=8)
+        self.port_entry.pack(fill=tk.X, pady=2)
         
-        net_row2 = tk.Frame(net_inner, bg=PANEL)
-        net_row2.pack(fill=tk.X, pady=(8, 0))
-        self.link_btn = tk.Button(net_row2, text="CONNECT", bg=ACCENT_DIM, fg="white", relief=tk.FLAT,
-                                 font=("Segoe UI", 9, "bold"), cursor="hand2", command=self.on_connect)
-        self.link_btn.pack(side=tk.LEFT, padx=(0, 8))
-        self.ws_status_text = tk.Label(net_row2, text="OFFLINE", fg=RED, bg=PANEL,
-                                      font=("Segoe UI", 10, "bold"))
-        self.ws_status_text.pack(side=tk.LEFT)
+        self.link_btn = tk.Button(ni, text="CONNECT", bg=ACCENT_DIM, fg="white", relief=tk.FLAT,
+                                 font=self.f9b, cursor="hand2", command=self.on_connect)
+        self.link_btn.pack(fill=tk.X, pady=(8, 4))
+        self.ws_status_text = tk.Label(ni, text="OFFLINE", fg=RED, bg=PANEL, font=self.f10b)
+        self.ws_status_text.pack()
         
-        # --- Mixer Section ---
-        mix_section = self._make_section(right, "MIXER")
-        mix_inner = tk.Frame(mix_section, bg=PANEL)
-        mix_inner.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
-        self.bs_bars = BlendshapeBars(mix_inner, width=380, height=200, max_bars=12)
+        # Simulation mode
+        self.test_var = tk.BooleanVar(value=self.config.test_mode)
+        tk.Checkbutton(ni, text="Simulation Mode", variable=self.test_var, fg=GREEN, bg=PANEL,
+                      selectcolor=BG, activebackground=PANEL, command=self.on_toggle_test,
+                      font=self.f9).pack(anchor="w", pady=(12, 0))
+        
+        # ========== TAB 5: MIXER ==========
+        mix_tab = tk.Frame(notebook, bg=PANEL)
+        notebook.add(mix_tab, text="  MIXER  ")
+        mi = tk.Frame(mix_tab, bg=PANEL)
+        mi.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self.bs_bars = BlendshapeBars(mi, width=380, height=300, max_bars=12)
         self.bs_bars.pack(fill=tk.BOTH, expand=True)
+        
+        # VU meters
+        vu_frame = tk.Frame(mi, bg=PANEL)
+        vu_frame.pack(fill=tk.X, pady=(8, 0))
+        self.sacred_geo = SacredGeometryCanvas(vu_frame, width=80, height=80)
+        self.sacred_geo.pack(side=tk.LEFT, padx=4)
+        self.sacred_geo.start()
+        self.hex_display = HexDisplay(vu_frame, rows=3, cols=6, width=160, height=80)
+        self.hex_display.pack(side=tk.RIGHT, padx=4)
+        self.hex_display.start()
         
         # ===================================================================
         # BOTTOM BAR
@@ -519,29 +669,45 @@ class MaxHeadroomApp:
         self.pose_trans_label = tk.Label(pi, text="POS    0.00   0.00   0.00", fg=TEXT, bg=PANEL, font=("Consolas", 11))
         self.pose_trans_label.pack(anchor="w", pady=2)
         
-        # System
-        sys_f = self._make_panel(bottom, "SYSTEM", width=280)
-        sys_f.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
-        si = tk.Frame(sys_f, bg=PANEL)
-        si.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-        st = tk.Frame(si, bg=PANEL)
-        st.pack(fill=tk.X)
-        self.sacred_geo = SacredGeometryCanvas(st, width=60, height=60)
-        self.sacred_geo.pack(side=tk.LEFT, padx=4)
-        self.sacred_geo.start()
-        self.hex_display = HexDisplay(st, rows=4, cols=5, width=130, height=60)
-        self.hex_display.pack(side=tk.RIGHT, padx=4)
-        self.hex_display.start()
-        self.test_var = tk.BooleanVar(value=self.config.test_mode)
-        tk.Checkbutton(si, text="Simulation Mode", variable=self.test_var, fg=GREEN, bg=PANEL,
-                      selectcolor=BG, activebackground=PANEL, command=self.on_toggle_test,
-                      font=("Segoe UI", 9)).pack(anchor="w", pady=(6, 0))
+        # Waveform
+        wav_f = self._make_panel(bottom, "WAVEFORM", width=280)
+        wav_f.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
+        self.waveform_canvas = WaveformCanvas(wav_f, bars=32, width=280, height=140, color=ACCENT)
+        self.waveform_canvas.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        self.waveform_canvas.start()
         
         # Console
-        log_f = self._make_panel(bottom, "CONSOLE", width=400)
+        log_f = self._make_panel(bottom, "CONSOLE", width=360)
         log_f.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.terminal_log = TerminalLog(log_f, height=7, width=70)
+        self.terminal_log = TerminalLog(log_f, height=7, width=60)
         self.terminal_log.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        
+        # DEV Console
+        dev_f = self._make_panel(bottom, "DEV", width=260)
+        dev_f.pack(side=tk.LEFT, fill=tk.BOTH, padx=(8, 0))
+        di = tk.Frame(dev_f, bg=PANEL)
+        di.pack(fill=tk.BOTH, expand=True, padx=8, pady=6)
+        # Debug metrics
+        self.dev_labels = {}
+        dev_metrics = [
+            ("cam_idx",    "Cam",    ""),
+            ("cam_size",   "Size",   ""),
+            ("frames_rx",  "Rx Frm", "0"),
+            ("frames_ok",  "Drawn",   "0"),
+            ("frm_time",   "Frm ms", "0"),
+            ("canvas_sz",  "Canvas", ""),
+            ("pipeline",   "Pipe",   "idle"),
+            ("last_err",   "Error",  "none"),
+        ]
+        for key, label, default in dev_metrics:
+            row = tk.Frame(di, bg=PANEL)
+            row.pack(fill=tk.X, pady=1)
+            tk.Label(row, text=label+":", fg=TEXT_DIM, bg=PANEL, font=self.f8,
+                    width=7, anchor="w").pack(side=tk.LEFT)
+            lbl = tk.Label(row, text=default, fg=TEXT, bg=PANEL, font=("Consolas", 8),
+                          anchor="w")
+            lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.dev_labels[key] = lbl
         
         # ===================================================================
         # FOOTER
@@ -550,16 +716,16 @@ class MaxHeadroomApp:
         footer.pack(fill=tk.X, padx=0, pady=0)
         footer.pack_propagate(False)
         self.video_status_label = tk.Label(footer, text="CAMERA: STANDBY", fg=ORANGE, bg=PANEL,
-                                          font=("Segoe UI", 9, "bold"))
+                                          font=self.f9b)
         self.video_status_label.pack(side=tk.LEFT, padx=16)
-        self.fps_label = tk.Label(footer, text="FPS: 0", fg=ACCENT, bg=PANEL, font=("Segoe UI", 9))
+        self.fps_label = tk.Label(footer, text="FPS: 0", fg=ACCENT, bg=PANEL, font=self.f9)
         self.fps_label.pack(side=tk.LEFT, padx=16)
-        self.packets_label = tk.Label(footer, text="PKT: 0", fg=TEXT_DIM, bg=PANEL, font=("Segoe UI", 9))
+        self.packets_label = tk.Label(footer, text="PKT: 0", fg=TEXT_DIM, bg=PANEL, font=self.f9)
         self.packets_label.pack(side=tk.LEFT, padx=16)
-        self.frame_time_label = tk.Label(footer, text="FRAME: 0ms", fg=TEXT_DIM, bg=PANEL, font=("Segoe UI", 9))
+        self.frame_time_label = tk.Label(footer, text="FRAME: 0ms", fg=TEXT_DIM, bg=PANEL, font=self.f9)
         self.frame_time_label.pack(side=tk.LEFT, padx=16)
         tk.Label(footer, text="D:Android  B:Beauty  C:Color  G:BG  A:AR  M:Morph  R:Reset  Q:Quit",
-                fg=TEXT_MUTE, bg=PANEL, font=("Segoe UI", 8)).pack(side=tk.RIGHT, padx=16)
+                fg=TEXT_MUTE, bg=PANEL, font=self.f8).pack(side=tk.RIGHT, padx=16)
         
         # Init
         self.terminal_log.log(f"Studio v{VERSION} initialized", "system")
@@ -584,7 +750,7 @@ class MaxHeadroomApp:
         hdr = tk.Frame(frame, bg="#1a1a25", height=30)
         hdr.pack(fill=tk.X)
         hdr.pack_propagate(False)
-        tk.Label(hdr, text=title, fg="#666688", bg="#1a1a25", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=12)
+        tk.Label(hdr, text=title, fg="#666688", bg="#1a1a25", font=self.f9b).pack(side=tk.LEFT, padx=12)
         return frame
     
     def _make_panel(self, parent, title, width=None):
@@ -594,7 +760,7 @@ class MaxHeadroomApp:
         hdr = tk.Frame(frame, bg="#1a1a25", height=28)
         hdr.pack(fill=tk.X)
         hdr.pack_propagate(False)
-        tk.Label(hdr, text=title, fg="#666688", bg="#1a1a25", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=12)
+        tk.Label(hdr, text=title, fg="#666688", bg="#1a1a25", font=self.f9b).pack(side=tk.LEFT, padx=12)
         return frame
     
     def _run_basic_gui(self):
@@ -644,9 +810,45 @@ class MaxHeadroomApp:
                 if filt.enabled:
                     ref["eye"].config(fg=ref["color"])
                     ref["label"].config(fg="#e0e0e8")
+                    ref["isl"].config(fg=ref["color"])
+                    ref["pct_label"].config(fg=ref["color"])
                 else:
                     ref["eye"].config(fg="#444455")
                     ref["label"].config(fg="#666688")
+                    ref["isl"].config(fg="#444455")
+                    ref["pct_label"].config(fg="#666688")
+    
+    def _on_filter_intensity(self, name, value):
+        v = float(value)
+        ref = self.filter_toggle_refs.get(name)
+        if ref:
+            ref["pct_label"].config(text=f"{int(v)}%")
+        if self.filter_manager:
+            f = self.filter_manager.get_filter(name)
+            if f:
+                f.set_param("intensity", v / 100.0)
+    
+    def _move_filter(self, name, delta):
+        if not self.filter_manager:
+            return
+        filters = self.filter_manager.filters
+        idx = next((i for i, f in enumerate(filters) if f.name == name), None)
+        if idx is None:
+            return
+        new_idx = idx + delta
+        if new_idx < 0 or new_idx >= len(filters):
+            return
+        filters[idx].priority, filters[new_idx].priority = filters[new_idx].priority, filters[idx].priority
+        self.terminal_log.log(f"Moved {name} {'up' if delta < 0 else 'down'}", "system")
+    
+    def _set_color_preset(self, preset_name):
+        if not self.filter_manager:
+            return
+        cf = self.filter_manager.get_filter("Color Grading")
+        if cf:
+            cf.set_param("preset", preset_name or "none")
+            cf.enable() if preset_name else cf.disable()
+            self.terminal_log.log(f"Color preset: {preset_name or 'None'}", "system")
     
     def _activate_scene(self, action, name):
         if not self.filter_manager:
@@ -702,7 +904,17 @@ class MaxHeadroomApp:
                 if ok:
                     self.terminal_log.log(f"Camera {idx} active", "ok")
                 else:
-                    self.terminal_log.log(f"Camera {idx} failed", "alert")
+                    self.terminal_log.log(f"Camera {idx} failed, scanning...", "system")
+                    cams = CameraManager.discover(max_index=5)
+                    if cams:
+                        idx2 = cams[0].index
+                        ok = self.cam_mgr.open(idx2)
+                        if ok:
+                            self.config.camera_index = idx2
+                            self.terminal_log.log(f"Camera {idx2} active", "ok")
+                            self.cam_var.set(f"Camera {idx2}")
+                    if not ok:
+                        self.terminal_log.log("No camera found", "alert")
             except:
                 pass
     
@@ -712,15 +924,23 @@ class MaxHeadroomApp:
         if not self.config.test_mode:
             self.cam_mgr = CameraManager(timeout=3.0)
             ok = self.cam_mgr.open(self.config.camera_index)
+            if not ok:
+                self.terminal_log.log(f"Camera {self.config.camera_index} failed, scanning...", "system")
+                cams = CameraManager.discover(max_index=5)
+                if cams:
+                    idx = cams[0].index
+                    ok = self.cam_mgr.open(idx)
+                    if ok:
+                        self.config.camera_index = idx
             if ok:
                 self.terminal_log.log("Camera refreshed", "ok")
             else:
-                self.terminal_log.log("Camera refresh failed", "alert")
+                self.terminal_log.log("No camera found", "alert")
     
     def _test_camera(self):
         self.terminal_log.log("Scanning cameras...", "system")
-        for i in range(3):
-            cap = cv2.VideoCapture(i)
+        for i in range(5):
+            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
             if cap.isOpened():
                 ret, _ = cap.read()
                 w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -775,8 +995,13 @@ class MaxHeadroomApp:
     
     def on_close(self):
         self.running = False
+        if self._crt_after_id:
+            try:
+                self.canvas.after_cancel(self._crt_after_id)
+            except:
+                pass
         try:
-            for attr in ['crt_overlay', 'hud_overlay', 'sacred_geo', 'hex_display']:
+            for attr in ['sacred_geo', 'hex_display', 'waveform_canvas']:
                 obj = getattr(self, attr, None)
                 if obj and hasattr(obj, 'stop'):
                     obj.stop()
@@ -836,10 +1061,14 @@ class MaxHeadroomApp:
                 data = FaceTrackingData(blendshapes=blends, head_pose=pose, timestamp=t)
                 if self.filter_manager:
                     try:
+                        self._pipeline_active = len([f for f in self.filter_manager.filters if f.enabled]) > 0
                         frame = self.filter_manager.process(frame, blendshapes=blends, head_pose=pose,
                                                             face_rect=face_rect, frame_id=self.frame_count)
                     except Exception as e:
                         self._try_log(f"Filter error: {e}", "warning")
+                        self._pipeline_active = False
+                else:
+                    self._pipeline_active = False
                 frame = self._draw_overlay(frame, data)
                 payload = {"type": "face_data", "blendshapes": blends, "head_pose": pose, "timestamp": t}
                 if self.filter_manager:
@@ -920,6 +1149,24 @@ class MaxHeadroomApp:
                 mode = "SIM" if self.config.test_mode else "LIVE"
                 cam_ok = self.config.test_mode or (self.cam_mgr and self.cam_mgr.is_opened())
                 self.video_status_label.config(text=f"CAMERA: {mode}", fg="#00cc66" if cam_ok else "#ffaa33")
+                # Update DEV console
+                if hasattr(self, 'dev_labels'):
+                    fh, fw2 = frame.shape[:2] if hasattr(frame, 'shape') else (0, 0)
+                    csz = f"{getattr(self, '_frame_w', 0)}x{getattr(self, '_frame_h', 0)}"
+                    cam_idx_s = str(self.config.camera_index)
+                    cam_info = f"{cam_idx_s} {'OK' if cam_ok else '--'}"
+                    rx = str(self.frame_count)
+                    drawn = getattr(self, '_drawn_count', 0)
+                    pipe_status = "active" if getattr(self, '_pipeline_active', False) else "idle"
+                    err_text = getattr(self, '_last_dev_err', 'none')
+                    self.dev_labels['cam_idx'].config(text=cam_info)
+                    self.dev_labels['cam_size'].config(text=f"{fw2}x{fh}")
+                    self.dev_labels['frames_rx'].config(text=rx)
+                    self.dev_labels['frames_ok'].config(text=str(drawn))
+                    self.dev_labels['frm_time'].config(text=f"{ft:.1f}")
+                    self.dev_labels['canvas_sz'].config(text=csz)
+                    self.dev_labels['pipeline'].config(text=pipe_status)
+                    self.dev_labels['last_err'].config(text=err_text, fg=RED if err_text != 'none' else TEXT)
             except Exception:
                 self._ui_pending = False
         try:
@@ -927,11 +1174,32 @@ class MaxHeadroomApp:
         except:
             pass
     
+    def _start_crt_animation(self):
+        """Animate CRT scanlines overlay on the video canvas via after()."""
+        def _tick():
+            if not self.running:
+                return
+            try:
+                w = max(640, self.canvas.winfo_width())
+                h = max(480, self.canvas.winfo_height())
+                # Draw scanlines + flicker on top of existing canvas content
+                self._crt_flicker = 0.5 + random.random() * 0.5
+                # Add occasional flicker band
+                if random.random() < 0.05 and hasattr(self, 'canvas'):
+                    band_y = random.randint(0, h - 20)
+                    self.canvas.create_rectangle(0, band_y, w, band_y + 2,
+                                                fill="#00ff0044", outline="")
+            except Exception:
+                pass
+            self._crt_after_id = self.canvas.after(80, _tick)
+        self.canvas.after(80, _tick)
+    
     def _update_canvas(self, frame):
         try:
             from PIL import Image, ImageTk
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w = rgb.shape[:2]
+            self._frame_w, self._frame_h = w, h
             cw = max(640, self.canvas.winfo_width())
             ch = max(480, self.canvas.winfo_height())
             if cw > 1 and ch > 1:
@@ -944,7 +1212,47 @@ class MaxHeadroomApp:
             self.canvas.delete("all")
             self.canvas.create_image(0, 0, anchor=tk.NW, image=photo)
             self.canvas.image = photo
+            # Draw CRT scanlines overlay
+            ch2 = max(480, self.canvas.winfo_height())
+            cw2 = max(640, self.canvas.winfo_width())
+            flicker = getattr(self, '_crt_flicker', 0.5)
+            for y in range(0, ch2, 3):
+                alpha = int(30 * flicker)
+                self.canvas.create_line(0, y, cw2, y, fill=f"#00{alpha:02x}00", width=1)
+            # Draw HUD if target available
+            if getattr(self, '_hud_target', None):
+                hx, hy = self._hud_target
+                self._draw_hud_reticle(cw2, ch2, hx, hy)
             self.preview_info.config(text=f"{w}x{h} @ {self.config.target_fps}fps")
+            self._drawn_count += 1
+            self._last_dev_err = "none"
+        except Exception as e:
+            self._last_dev_err = str(e)[:30]
+            self._try_log(f"Canvas error: {e}", "warning")
+    
+    def _draw_hud_reticle(self, cw, ch, tx, ty):
+        """Draw targeting reticle at given coordinates."""
+        try:
+            r = 30
+            self.canvas.create_oval(tx - r, ty - r, tx + r, ty + r,
+                                   outline="#00ff0088", width=1)
+            self.canvas.create_line(tx - r - 10, ty, tx - r + 5, ty,
+                                   fill="#00ff0088", width=1)
+            self.canvas.create_line(tx + r - 5, ty, tx + r + 10, ty,
+                                   fill="#00ff0088", width=1)
+            self.canvas.create_line(tx, ty - r - 10, tx, ty - r + 5,
+                                   fill="#00ff0088", width=1)
+            self.canvas.create_line(tx, ty + r - 5, tx, ty + r + 10,
+                                   fill="#00ff0088", width=1)
+            # Rotating data ring
+            t = time.time()
+            ring_r = 45
+            for i in range(8):
+                a = t * 0.5 + i * 3.14159 / 4
+                px = tx + int(ring_r * math.cos(a))
+                py = ty + int(ring_r * math.sin(a))
+                self.canvas.create_oval(px - 2, py - 2, px + 2, py + 2,
+                                       fill="#00ff0044", outline="")
         except Exception:
             pass
     
@@ -959,8 +1267,7 @@ class MaxHeadroomApp:
                     ch = max(480, self.canvas.winfo_height())
                     hx = int((fx + fw / 2) / frame.shape[1] * cw)
                     hy = int((fy + fh / 2) / frame.shape[0] * ch)
-                    if hasattr(self, 'hud_overlay'):
-                        self.hud_overlay.set_target(hx, hy)
+                    self._hud_target = (hx, hy)
             except:
                 pass
     

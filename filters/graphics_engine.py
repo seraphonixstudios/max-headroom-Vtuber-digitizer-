@@ -600,6 +600,225 @@ class ScanlineEffects:
         return result.astype(np.uint8)
 
 # ============================================================================
+# CEL-SHADING / TOON RENDERING
+# ============================================================================
+class CelShading:
+    """
+    Cel-shading / toon rendering engine.
+    Combines edge detection outlines with flat shaded color regions.
+    """
+    
+    @staticmethod
+    def apply(frame: np.ndarray, edge_threshold1: float = 80,
+              edge_threshold2: float = 150, quantize_levels: int = 6,
+              edge_color: Tuple[int, int, int] = (0, 0, 0),
+              edge_thickness: int = 1) -> np.ndarray:
+        """
+        Apply cel-shading: edge outlines + flat color quantization.
+
+        Args:
+            frame: BGR input image
+            edge_threshold1: Canny low threshold
+            edge_threshold2: Canny high threshold
+            quantize_levels: Number of color levels per channel
+            edge_color: BGR color for outlines
+            edge_thickness: Edge line thickness
+        """
+        # 1. Quantize colors for flat shading
+        factor = 256 // max(2, quantize_levels)
+        flat = (frame // factor) * factor + factor // 2
+
+        # 2. Edge detection
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, edge_threshold1, edge_threshold2)
+
+        if edge_thickness > 1:
+            edges = cv2.dilate(edges, np.ones((edge_thickness, edge_thickness), np.uint8))
+
+        # 3. Blend edges onto flat shading
+        result = flat.copy()
+        result[edges > 0] = edge_color
+        return result
+
+    @staticmethod
+    def apply_color_quantized(frame: np.ndarray, k: int = 8,
+                              edge_style: str = "canny",
+                              edge_strength: float = 1.0) -> np.ndarray:
+        """
+        High-quality cel-shading with k-means color quantization.
+
+        Args:
+            frame: BGR input
+            k: Number of palette colors (2-16)
+            edge_style: 'canny', 'sobel', or 'none'
+            edge_strength: Edge detection sensitivity
+        """
+        # K-means palette quantization
+        quantized = ColorQuantizer.quantize_fast(frame, k=k)
+
+        if edge_style == "none":
+            return quantized
+
+        # Edge detection
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if edge_style == "sobel":
+            grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+            grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+            edges = cv2.magnitude(grad_x, grad_y)
+            edges = np.clip(edges, 0, 255).astype(np.uint8)
+            _, edges = cv2.threshold(edges, 40 * edge_strength, 255, cv2.THRESH_BINARY)
+        else:
+            t1 = int(60 * edge_strength)
+            t2 = int(120 * edge_strength)
+            edges = cv2.Canny(gray, t1, t2)
+
+        result = quantized.copy()
+        result[edges > 0] = (0, 0, 0)
+        return result
+
+    @staticmethod
+    def comic_style(frame: np.ndarray, k: int = 6,
+                    dot_density: float = 0.15) -> np.ndarray:
+        """
+        Comic-book style: quantized colors + halftone dots + bold outlines.
+        """
+        # Quantize
+        quantized = ColorQuantizer.quantize_fast(frame, k=k)
+
+        # Edge outlines
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 50, 120)
+
+        # Halftone dots in midtones
+        gray_float = gray.astype(np.float32) / 255.0
+        h, w = frame.shape[:2]
+        dot_mask = np.random.random((h, w)) < dot_density
+        midtones = (gray_float > 0.2) & (gray_float < 0.7)
+        apply_dots = dot_mask & midtones
+
+        result = quantized.copy()
+        result[edges > 0] = (0, 0, 0)
+        result[apply_dots] = (0, 0, 0)
+        return result
+
+# ============================================================================
+# BLOOM / GLOW EFFECT
+# ============================================================================
+class BloomEffect:
+    """
+    High-quality glow/bloom post-process effect.
+    Threshold bright areas, blur, and composite back.
+    """
+
+    @staticmethod
+    def apply(frame: np.ndarray, threshold: float = 0.7,
+              blur_radius: int = 9, intensity: float = 0.4,
+              color: Optional[Tuple[int, int, int]] = None) -> np.ndarray:
+        """
+        Apply bloom glow to bright areas.
+
+        Args:
+            frame: BGR input
+            threshold: Brightness threshold (0-1)
+            blur_radius: Gaussian blur kernel size
+            intensity: Glow blend intensity
+            color: Optional glow tint (BGR), None = use original color
+        """
+        # Extract bright regions
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+        _, bright_mask = cv2.threshold((gray * 255).astype(np.uint8),
+                                       int(threshold * 255), 255, cv2.THRESH_BINARY)
+        bright_mask = bright_mask.astype(np.float32) / 255.0
+
+        # Create glow layer
+        if color is not None:
+            glow_layer = np.full_like(frame, color, dtype=np.uint8)
+        else:
+            glow_layer = frame.copy()
+
+        # Apply mask and blur
+        if blur_radius > 0:
+            if blur_radius % 2 == 0:
+                blur_radius += 1
+            glow_layer = glow_layer.astype(np.float32)
+            for c in range(3):
+                glow_layer[:, :, c] = glow_layer[:, :, c] * bright_mask
+            glow_layer = cv2.GaussianBlur(glow_layer, (blur_radius, blur_radius), 0)
+        else:
+            glow_layer = (glow_layer.astype(np.float32) *
+                          np.stack([bright_mask] * 3, axis=-1))
+
+        # Composite
+        result = cv2.addWeighted(frame.astype(np.float32), 1.0,
+                                 glow_layer, intensity, 0)
+        return np.clip(result, 0, 255).astype(np.uint8)
+
+    @staticmethod
+    def glow_edges(frame: np.ndarray, edge_intensity: float = 0.5,
+                   blur_radius: int = 7, glow_color: Tuple[int, int, int] = (0, 200, 255)) -> np.ndarray:
+        """
+        Glow effect applied to detected edges (neon-edge look).
+        """
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 50, 120)
+        edges = cv2.dilate(edges, np.ones((2, 2), np.uint8))
+
+        glow = np.zeros_like(frame, dtype=np.float32)
+        glow[edges > 0] = glow_color
+
+        if blur_radius > 0:
+            if blur_radius % 2 == 0:
+                blur_radius += 1
+            glow = cv2.GaussianBlur(glow, (blur_radius, blur_radius), 0)
+
+        result = cv2.addWeighted(frame.astype(np.float32), 1.0, glow, edge_intensity, 0)
+        return np.clip(result, 0, 255).astype(np.uint8)
+
+# ============================================================================
+# SMART EDGE DETECTION FOR STYLIZATION
+# ============================================================================
+class StylizedEdges:
+    """
+    Multiple edge detection styles for artistic rendering.
+    """
+
+    @staticmethod
+    def ink_edges(frame: np.ndarray, blur_first: bool = True,
+                  strength: float = 1.0) -> np.ndarray:
+        """
+        Dark ink-style edges using difference of Gaussians.
+        """
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if blur_first:
+            gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+        # Difference of Gaussians
+        blur1 = cv2.GaussianBlur(gray, (3, 3), 1.0)
+        blur2 = cv2.GaussianBlur(gray, (7, 7), 2.0)
+        dog = cv2.subtract(blur1, blur2)
+
+        # Normalize and threshold
+        dog = np.clip(dog * strength, 0, 255).astype(np.uint8)
+        _, edges = cv2.threshold(dog, 20, 255, cv2.THRESH_BINARY)
+
+        result = frame.copy()
+        result[edges > 0] = (0, 0, 0)
+        return result
+
+    @staticmethod
+    def colored_edges(frame: np.ndarray, edge_color: Tuple[int, int, int] = (255, 100, 255),
+                      threshold1: float = 80, threshold2: float = 160) -> np.ndarray:
+        """
+        Colored edge outlines for neon/stylized look.
+        """
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, threshold1, threshold2)
+
+        result = frame.copy()
+        result[edges > 0] = edge_color
+        return result
+
+# ============================================================================
 # GPU ACCELERATION WRAPPER
 # ============================================================================
 class GPUGraphicsEngine:
